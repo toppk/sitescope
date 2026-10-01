@@ -1,0 +1,27 @@
+# sitescope
+
+> sitescope is a small health monitor and status page for a handful of NixOS hosts, in one static Go binary. Agents (`sitescope agent`) serve a JSON host report on their WireGuard address. A hub (`sitescope hub`) polls them and probes DNS, RDAP domain expiry, TLS, HTTP, SMTP, open relay, DNS blocklists, Linode and Cloudflare; it emails state changes and a daily digest, keeps 35 days of history in bbolt, and serves a public traffic-light page plus an authenticated detail view and /api/status. API tokens live in an age vault decrypted only into mlocked memory after an operator runs `sitescope unlock`. Everything is read only.
+
+Every page below is Markdown. llms-full.txt has all of them in one file.
+
+## Start here
+
+- [Overview](index.md): what sitescope is and how it fits together
+- [Getting started](getting-started.md): flake, hub, agents, vault
+- [Concepts](concepts.md): checks, statuses, retries, notifications, history
+
+## Using sitescope
+
+- [Checks](checks.md): every check, its id and thresholds
+- [Configuration](configuration.md): every settings key and environment variable
+- [NixOS module](nixos.md): options and the generated units
+- [Command line](cli.md): every subcommand
+- [Vault and secrets](vault.md): unlock, memory protection, token scopes
+- [Status page and API](web.md): routes and /api/status JSON
+- [Operations](operations.md): restarts, logs, files, troubleshooting
+
+## Reference
+
+- [Security model](security.md): threat model and hardening
+- [Agent report](agent-report.md): /v1/report JSON schema
+- [Development](development.md): build, test, code layout

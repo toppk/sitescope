@@ -1,0 +1,29 @@
+{
+  "hub": {"listen": "127.0.0.1:8470", "hostname": "alpha", "publicURL": "https://status.example.org", "controlGroup": ""},
+  "alerts": {"enabled": true, "from": "sitescope@example.org", "to": ["ops@example.org"], "digestTime": "08:00"},
+  "public": [{"name": "DNS", "areas": ["dns"]}, {"name": "Mail", "areas": ["mail"]}, {"name": "Web", "areas": ["http", "tls"]}],
+  "hosts": {
+    "hosts": [
+      {"name": "alpha", "url": "http://10.0.0.2:9105", "postfix": true, "knot": true},
+      {"name": "bravo", "url": "http://10.0.0.1:9105", "knot": true, "wgIgnore": ["delta"]}
+    ],
+    "wgPeers": {"KEY1=": "bravo"}
+  },
+  "dns": {
+    "zones": ["example.org", "example.net"],
+    "primary": "10.0.0.1",
+    "servers": [{"name": "alpha", "addrs": ["192.0.2.1", "2001:db8::1"]}],
+    "delegation": ["da.example.org", "ne.example.org"],
+    "resolve": {"da.example.org": ["192.0.2.1", "2001:db8::1"]}
+  },
+  "domains": {"names": ["example.org"]},
+  "tls": {"targets": [{"name": "da.example.org"}, {"name": "da.example.org", "starttls": "smtp", "families": ["4"]}]},
+  "http": {"targets": [{"name": "portal", "url": "https://portal.example.org/healthz"}]},
+  "mail": {
+    "banner": {"servers": [{"name": "alpha", "addrs": ["192.0.2.1"]}]},
+    "openRelay": {"servers": [{"name": "alpha", "addrs": ["192.0.2.1"]}]},
+    "blocklists": {"ips": ["192.0.2.1"], "lists": [{"zone": "zen.spamhaus.org", "ipv6": true, "crit": true}]}
+  },
+  "linode": {"instances": [{"name": "alpha", "id": 1}]},
+  "cloudflare": {"zone": "example.org", "expected": [{"type": "A", "name": "da.example.org", "content": "192.0.2.1"}]}
+}

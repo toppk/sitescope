@@ -1,0 +1,13 @@
+# Project settings for the Horizon theme.
+site-title: sitescope
+site-tagline: a small health monitor and status page for a few hosts
+site-logo: assets/logo.png
+site-footer: 'sitescope · <a href="https://github.com/toppk/sitescope">github.com/toppk/sitescope</a>'
+llms: llms.txt
+top-links:
+  - label: Docs
+    href: getting-started.html
+  - label: Checks
+    href: checks.html
+  - label: GitHub
+    href: https://github.com/toppk/sitescope
