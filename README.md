@@ -52,9 +52,9 @@ once, unless its agent is down. A digest of everything not ok goes out once a da
 `alerts.digestTime` (skipped on the day of a start after that time). Startup always sends "sitescope started on <host> - vault
 LOCKED, run sitescope unlock".
 
-After every minute with no store errors the hub GETs
-`SITESCOPE_HEARTBEAT_URL`, e.g. a dead-man's-switch check with a period of 1
-minute and a grace of 5.
+Every `hub.heartbeatInterval` (default 1m) with no store errors the hub GETs
+`SITESCOPE_HEARTBEAT_URL`, e.g. a dead-man's-switch check with a matching
+period and some grace.
 
 ## Vault
 
@@ -186,7 +186,7 @@ Reference (all optional; defaults shown):
 | key | default | notes |
 |---|---|---|
 | `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "30s"}` | every section and HTTP target takes the same four keys |
-| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
+| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (negative disables), `digestTime` (`"HH:MM"`, local time) | |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`, 0 disables a bound |

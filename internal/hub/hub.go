@@ -148,7 +148,7 @@ func (h *Hub) schedule(ctx context.Context) {
 	results := make(chan result, len(h.checks))
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	var lastMinute, lastNotify, lastPrune, lastSave time.Time
+	var lastBeat, lastNotify, lastPrune, lastSave time.Time
 
 	for {
 		select {
@@ -185,8 +185,8 @@ func (h *Hub) schedule(ctx context.Context) {
 			h.notify(now)
 			h.digest(now)
 		}
-		if now.Sub(lastMinute) >= time.Minute {
-			lastMinute = now
+		if now.Sub(lastBeat) >= h.cfg.Hub.HeartbeatInterval.D() {
+			lastBeat = now
 			h.heartbeat(ctx)
 		}
 		if now.Sub(lastSave) >= 5*time.Minute {

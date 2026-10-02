@@ -89,7 +89,9 @@ type Hub struct {
 	DocsURL       string   `json:"docsURL"`
 	RetentionDays int      `json:"retentionDays"`
 	SampleEvery   Duration `json:"sampleEvery"`
-	Concurrency   int      `json:"concurrency"`
+	// HeartbeatInterval is how often SITESCOPE_HEARTBEAT_URL is pinged.
+	HeartbeatInterval Duration `json:"heartbeatInterval"`
+	Concurrency       int      `json:"concurrency"`
 }
 
 type Agent struct {
@@ -360,6 +362,9 @@ func (c *Config) applyDefaults() {
 	def(&h.DocsURL, "https://toppk.github.io/sitescope/")
 	if h.RetentionDays == 0 {
 		h.RetentionDays = 35
+	}
+	if h.HeartbeatInterval == 0 {
+		h.HeartbeatInterval = Duration(time.Minute)
 	}
 	if h.SampleEvery == 0 {
 		h.SampleEvery = Duration(15 * time.Minute)

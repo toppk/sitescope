@@ -73,8 +73,9 @@ A failed send is retried on the next 30-second round.
 
 ## Heartbeat
 
-After every minute in which the store had no errors, the hub GETs
-`SITESCOPE_HEARTBEAT_URL`. If the hub dies, hangs, or loses its disk, the
+Every `hub.heartbeatInterval` (1 minute by default) in which the store had
+no errors, the hub GETs `SITESCOPE_HEARTBEAT_URL`. Set the heartbeat
+service's period to match, with some grace. If the hub dies, hangs, or loses its disk, the
 pings stop and the heartbeat service tells you. That covers the one thing
 sitescope can't report on: itself.
 
