@@ -40,6 +40,7 @@ type Hub struct {
 
 	wake     chan string
 	lastTick atomic.Int64
+	started  time.Time
 	storeErr atomic.Bool
 }
 
@@ -97,6 +98,7 @@ func (h *Hub) Run(ctx context.Context) error {
 		slog.Warn("SITESCOPE_AGENT_TOKEN is not set; agent polls will fail")
 	}
 	h.vault.onChange = func() { h.wakeSecretChecks() }
+	h.skipMissedDigest(time.Now())
 
 	errc := make(chan error, 2)
 	go func() { errc <- h.serveWeb(ctx) }()

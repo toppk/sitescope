@@ -95,6 +95,11 @@ func TestHandleRetriesAndRecords(t *testing.T) {
 
 func TestPublicPageRevealsNothing(t *testing.T) {
 	h := testHub(t)
+	h.cfg.Public = []config.Public{
+		{Name: "DNS", Areas: []string{"dns"}, Visibility: config.VisGrouped},
+		{Name: "Web", Areas: []string{"http", "tls"}, Visibility: config.VisGrouped},
+		{Checks: []string{"*"}, Visibility: config.VisPrivate},
+	}
 	for range 3 {
 		h.handle(result{h.byID["dns.soa.example.org.alpha.v4"], check.Critf("serial 1 behind 192.0.2.1 alpha"), time.Now()})
 	}
@@ -102,10 +107,16 @@ func TestPublicPageRevealsNothing(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.public(w, httptest.NewRequest("GET", "/", nil))
 	page := w.Body.String()
-	for _, leak := range []string{"192.0.2", "alpha", "serial", "portal", "example.org"} {
+	w = httptest.NewRecorder()
+	h.statusJSON(w, httptest.NewRequest("GET", "/status.json", nil))
+	page += w.Body.String()
+	for _, leak := range []string{"192.0.2", "alpha", "serial", "portal", "example.org", "Mail"} {
 		if strings.Contains(page, leak) {
 			t.Errorf("public page leaks %q", leak)
 		}
+	}
+	if !strings.Contains(w.Body.String(), `"overall": "crit"`) {
+		t.Error("status.json lacks the overall status")
 	}
 	if !strings.Contains(page, "Vault locked") || !strings.Contains(page, "Outage") {
 		t.Error("public page should show the lock banner and the DNS outage")
@@ -130,14 +141,14 @@ func TestVisibilityClasses(t *testing.T) {
 	if !strings.Contains(page, "Customer portal") || !strings.Contains(page, "Website") {
 		t.Error("public check should be listed under its label")
 	}
-	if strings.Contains(page, "Outage") || strings.Contains(page, "Mail") {
-		t.Error("private and unmatched checks must not show or count")
+	if strings.Contains(page, "Outage") {
+		t.Error("private checks must not count")
 	}
 	if _, svc, _ := h.visibility(h.byID["dns.primary"]); svc != "DNS" {
 		t.Errorf("dns.primary grouped into %q", svc)
 	}
-	if vis, _, _ := h.visibility(h.byID["mail.banner.alpha.v4"]); vis != config.VisPrivate {
-		t.Error("checks matching no rule are private")
+	if vis, svc, label := h.visibility(h.byID["mail.banner.alpha.v4"]); vis != config.VisPublic || svc != "Mail" || label == "" {
+		t.Errorf("checks matching no rule are public under their area, got %s %q %q", vis, svc, label)
 	}
 	w = httptest.NewRecorder()
 	h.detail(w, httptest.NewRequest("GET", "/detail", nil))
@@ -244,4 +255,26 @@ func TestControlSocket(t *testing.T) {
 
 func dialUnix(path string) (*net.UnixConn, error) {
 	return net.DialUnix("unix", nil, &net.UnixAddr{Name: path, Net: "unix"})
+}
+
+func TestDigestNotSentOnStartup(t *testing.T) {
+	h := testHub(t)
+	h.cfg.Alerts.DigestTime = "08:00"
+	start := time.Date(2026, 10, 1, 22, 0, 0, 0, time.Local)
+	h.skipMissedDigest(start)
+	if h.store.Meta("lastDigest") != "2026-10-01" {
+		t.Fatal("a start after the digest time should skip that day's digest")
+	}
+	h.skipMissedDigest(time.Date(2026, 10, 2, 7, 55, 0, 0, time.Local))
+	if h.store.Meta("lastDigest") != "2026-10-01" {
+		t.Fatal("a start before the digest time must leave it due")
+	}
+	h.digest(time.Date(2026, 10, 2, 8, 1, 0, 0, time.Local))
+	if h.store.Meta("lastDigest") != "2026-10-01" {
+		t.Fatal("no digest within the grace period after a start")
+	}
+	h.digest(time.Date(2026, 10, 2, 8, 6, 0, 0, time.Local))
+	if h.store.Meta("lastDigest") != "2026-10-02" {
+		t.Fatal("digest should go out once the grace period has passed")
+	}
 }

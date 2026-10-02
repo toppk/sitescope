@@ -163,14 +163,29 @@ func ChangeMail(due []change) (string, string) {
 	return fmt.Sprintf("%d changes: %s", len(due), strings.Join(parts, ", ")), b.String()
 }
 
+// digestGrace keeps a digest from listing checks that haven't run since a restart.
+const digestGrace = 10 * time.Minute
+
+func (h *Hub) pastDigestTime(now time.Time) bool {
+	hh, mm, _ := config.ParseClock(h.cfg.Alerts.DigestTime)
+	return now.Hour()*60+now.Minute() >= hh*60+mm
+}
+
+// skipMissedDigest drops today's digest when starting after its time; the startup mail says enough.
+func (h *Hub) skipMissedDigest(now time.Time) {
+	h.started = now
+	if h.cfg.Alerts.DigestTime != "" && h.pastDigestTime(now) {
+		h.store.SetMeta("lastDigest", now.Format("2006-01-02"))
+	}
+}
+
 // digest sends the daily summary once a day after alerts.digestTime.
 func (h *Hub) digest(now time.Time) {
 	if h.cfg.Alerts.DigestTime == "" {
 		return
 	}
-	hh, mm, _ := config.ParseClock(h.cfg.Alerts.DigestTime)
 	today := now.Format("2006-01-02")
-	if now.Hour()*60+now.Minute() < hh*60+mm || h.store.Meta("lastDigest") == today {
+	if !h.pastDigestTime(now) || h.store.Meta("lastDigest") == today || now.Sub(h.started) < digestGrace {
 		return
 	}
 	var bad, locked []string

@@ -28,8 +28,9 @@ only, probes only ask, and the open-relay probe stops at `RCPT TO`.
 - **Secrets from outside the store.** The environment file is not in
   `/nix/store`, where every user could read it.
 - **The public page says only what you allow.** Each check is public
-  under a label you choose, grouped into a service light, or private (the
-  default for checks no rule matches). Messages are never public.
+  under a label, grouped into a service light, or private. Checks no rule
+  matches are public under their own names, so add a catch-all private
+  rule if names like hostnames must not show. Messages are never public.
 
 ## Process hardening
 

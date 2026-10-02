@@ -44,7 +44,7 @@ Changes are batched every 30 seconds into one email, sent via SMTP to
 change waits at least `renotifyInterval` (default 1h). A check that flaps back
 to the notified status sends nothing. The first sighting of a healthy check is
 silent. A digest of everything not ok goes out once a day after
-`alerts.digestTime`. Startup always sends "sitescope started on <host> - vault
+`alerts.digestTime` (skipped on the day of a start after that time). Startup always sends "sitescope started on <host> - vault
 LOCKED, run sitescope unlock".
 
 After every minute with no store errors the hub GETs
@@ -100,12 +100,13 @@ Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`).
   vault-locked banner. Each check is `public` (its own row, under a label
   from `labels`), `grouped` (folded into its service's light) or `private`
   (not shown, not counted). `public` is an ordered list of rules matched by
-  area or check id glob; first match wins, unmatched checks are private, and
-  with no rules each area is one grouped light. Messages, hostnames,
+  area or check id glob; first match wins, and unmatched checks are public
+  under their area's name (so with no rules everything is listed). Messages, hostnames,
   addresses and versions are never shown.
 - `/detail`, `/detail/check?id=…`, `/api/status`: HTTP basic auth, user
   `admin`, password checked against the bcrypt hash in the vault. Read-only.
   Each check has its last message, retries, 30-day strip and history.
+- `/status.json`: the public page as JSON, same facts.
 - `/healthz`: 200 while the scheduler is ticking.
 
 ## Configuration
@@ -182,7 +183,7 @@ Reference (all optional; defaults shown):
 | `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "30s"}` | every section and HTTP target takes the same four keys |
 | `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `digestTime` (`"HH:MM"`, local time) | |
-| `public` | one grouped light per area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
+| `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`) | thresholds are `{warn, crit}`, 0 disables a bound |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | .us and .co, missing from the IANA file, have built-in fallbacks |

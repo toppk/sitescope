@@ -58,7 +58,11 @@ them in one email.
 - **Flapping is absorbed.** If a check changes and changes back before its
   next notification is due, nothing is sent.
 - **Daily digest.** After `alerts.digestTime`, one email lists every check
-  that isn't ok.
+  that isn't ok. A hub started after that time skips the day's digest, and
+  none goes out in the first 10 minutes after a start, so a restart never
+  mails a list of checks that simply haven't run yet.
+- **Unknown is quiet.** Changes to `unknown` (an agent's dependent checks
+  when the agent is down, for example) don't send email.
 - **Startup.** Every start sends "sitescope started on HOST - vault LOCKED,
   run sitescope unlock".
 

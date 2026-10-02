@@ -17,6 +17,22 @@ front of it.
     versions are never shown. The page reloads every `hub.refresh` seconds
     and works without JavaScript.
 
+`/status.json`
+:   The public page as JSON, with exactly the same facts: overall status,
+    whether the vault is locked, and each service with its class A checks.
+
+    ```json
+    {
+      "time": "2026-10-01T12:00:00Z",
+      "overall": "crit",
+      "vaultLocked": false,
+      "services": [
+        { "name": "Web", "status": "ok", "checks": [ { "name": "Main site", "status": "ok" } ] },
+        { "name": "DNS", "status": "ok" }
+      ]
+    }
+    ```
+
 `/healthz`
 :   200 while the scheduler is ticking, 503 if it has stalled. For the
     proxy's health checks.
@@ -37,8 +53,10 @@ class each one is in.
 
 Classes come from the rules in `public`. Each check takes the **first**
 rule it matches, by area or by check id glob (`*` matches any run of
-characters, `?` one). A check that matches no rule is private. When
-`public` isn't set at all, every area is one grouped light.
+characters, `?` one). A check that matches no rule is **public**, listed
+under its area's light with its own name. So with no rules at all,
+everything is class A, and you hide things as you go. To make private the
+default instead, end the list with `{ visibility = "private"; checks = [ "*" ]; }`.
 
 ```nix
 public = [
@@ -54,7 +72,7 @@ public = [
   { name = "DNS"; areas = [ "dns" ]; }
   { name = "Mail"; areas = [ "mail" ]; }
   { name = "Servers"; areas = [ "hosts" "hygiene" ]; }
-  # domains, tls and cloud match nothing, so they are private
+  # everything else stays public, under its area's name
 ];
 ```
 
