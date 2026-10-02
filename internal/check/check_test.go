@@ -343,13 +343,13 @@ func TestSOACheck(t *testing.T) {
 	same := fakeDNS(t, 2026100102, true)
 	behind := fakeDNS(t, 2026100101, true)
 	notAA := fakeDNS(t, 2026100102, false)
-	if got := soaCheck("example.org", same, primary)(ctx, nil); got.Status != OK {
+	if got := soaCheck("example.org", same, primary, &serials{})(ctx, nil); got.Status != OK {
 		t.Errorf("in sync = %+v", got)
 	}
-	if got := soaCheck("example.org", behind, primary)(ctx, nil); got.Status != Warn {
+	if got := soaCheck("example.org", behind, primary, &serials{})(ctx, nil); got.Status != Warn {
 		t.Errorf("behind = %+v", got)
 	}
-	if got := soaCheck("example.org", notAA, primary)(ctx, nil); got.Status != Crit {
+	if got := soaCheck("example.org", notAA, primary, &serials{})(ctx, nil); got.Status != Crit {
 		t.Errorf("no aa = %+v", got)
 	}
 	if got := primaryCheck(primary, []string{"example.org", "example.net"})(ctx, nil); got.Status != OK {
@@ -357,7 +357,7 @@ func TestSOACheck(t *testing.T) {
 	}
 	tctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer cancel()
-	if got := soaCheck("example.org", "127.0.0.1:9", primary)(tctx, nil); got.Status != Crit {
+	if got := soaCheck("example.org", "127.0.0.1:9", primary, &serials{})(tctx, nil); got.Status != Crit {
 		t.Errorf("dead server = %+v", got)
 	}
 }

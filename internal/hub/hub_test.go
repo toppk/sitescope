@@ -298,3 +298,17 @@ func TestStuckUnknownAlertsButNotUnderDownAgent(t *testing.T) {
 		t.Error("no unknown alerts right after startup")
 	}
 }
+
+func TestProbesListsDestinations(t *testing.T) {
+	h := testHub(t)
+	var b strings.Builder
+	if err := Probes(h.cfg, &b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"192.0.2.1 25/tcp", "connect, read banner, QUIT", "RCPT TO", "/day", "/h", "destinations"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("probes output lacks %q:\n%s", want, out)
+		}
+	}
+}

@@ -43,6 +43,7 @@ operator (on the hub host):
   vault set-password          store the admin password hash for the detail view
 
   check -config FILE [-match SUBSTR]   run checks once and print results
+  probes -config FILE                  list every destination the hub contacts, and how often
   version
 `
 
@@ -68,6 +69,11 @@ func main() {
 		err = runAgent(args)
 	case "check":
 		err = runCheck(args)
+	case "probes":
+		var cfg *config.Config
+		if cfg, err = loadConfig(flag.NewFlagSet("probes", flag.ExitOnError), args); err == nil {
+			err = hub.Probes(cfg, os.Stdout)
+		}
 	case "unlock", "lock", "status":
 		err = runControl(cmd, args)
 	case "vault":

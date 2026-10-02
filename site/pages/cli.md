@@ -73,6 +73,13 @@ ok    tls.www.example.org.https.443.v6   58ms   certificate expires 2026-12-01 (
 warn  tls.mx.example.org.smtp.25.v4      212ms  certificate expires 2026-10-15 (14 days), issuer E8
 ```
 
+## What the hub contacts
+
+`sitescope probes -config FILE`
+:   Lists every destination the hub contacts (address or host, port and
+    protocol), what it sends there and how often, when all is healthy.
+    See [Probes and alert volume](probes.html).
+
 ## Other
 
 `sitescope version`

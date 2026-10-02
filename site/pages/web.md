@@ -11,11 +11,19 @@ front of it.
 ## Public
 
 `/`
-:   The overall status, one light per service, the time of the last update,
-    and a banner while the vault is locked. What each check contributes
-    depends on its visibility, below. Messages, hostnames, addresses and
-    versions are never shown. The page reloads every `hub.refresh` seconds
-    and works without JavaScript.
+:   The overall status with a count of checks by status, then one
+    collapsible section per service showing how many of its checks are ok
+    (for example "Mail 11/11"). Inside, checks about the same host or
+    target are folded into a group of their own ("da2 16/17"). Sections
+    with a warning or failure open by themselves. What each check
+    contributes depends on its visibility, below. Messages are never shown.
+
+    The page reloads every `hub.refresh` seconds and works without
+    JavaScript. With it, the sun button switches light and dark (otherwise
+    the system setting applies), and expanded sections stay expanded across
+    reloads. It uses the documentation site's palette and fonts; the fonts
+    come from Google Fonts, with system fallbacks. The footer links to the
+    documentation (`hub.docsURL`).
 
 `/status.json`
 :   The public page as JSON, with exactly the same facts: overall status,
@@ -90,13 +98,14 @@ limited to one per second; a successful login is cached for ten minutes,
 and the cache is cleared on `lock`.
 
 `/detail`
-:   Every check grouped by area, with its status, how long it has had it,
-    its last message, retry progress and visibility. The overall status
-    here includes private checks.
+:   Every check, in the same collapsible areas and groups, with its
+    status, how long it has had it, its last message, interval, retry
+    progress, visibility and a 30-day strip. The overall status here
+    includes private checks.
 
 `/detail/check?id=ID`
-:   One check: timing, a 30-day strip of daily worst status, and its
-    history of changes.
+:   One check: timing, the network contacts each run makes, a 30-day
+    strip of daily worst status, and its history of changes.
 
 `/api/status`
 :   The same as JSON:
@@ -135,8 +144,8 @@ counts. `retrying` appears on a check that is in the middle of its retries;
 
 ## Headers
 
-Every response sets `Content-Security-Policy: default-src 'none';
-style-src 'unsafe-inline'; frame-ancestors 'none'` (no scripts, no
-framing), `X-Content-Type-Options: nosniff` and
-`Referrer-Policy: no-referrer`. Authenticated responses are
+Every response sets a `Content-Security-Policy` that allows only the
+hub's own scripts, styles and images (served from `/static/`), Google
+Fonts, and no framing or forms, plus `X-Content-Type-Options: nosniff`
+and `Referrer-Policy: no-referrer`. Authenticated responses are
 `Cache-Control: no-store`.

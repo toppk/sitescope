@@ -30,6 +30,13 @@ func smtpDial(ctx context.Context, addr string, port int) (*textproto.Conn, erro
 	return textproto.NewConn(conn), nil
 }
 
+// quit ends the session politely, so the server logs a QUIT rather than a lost connection.
+func quit(c *textproto.Conn) {
+	if c.PrintfLine("QUIT") == nil {
+		c.ReadResponse(221)
+	}
+}
+
 func bannerCheck(addr string, s config.MailServer, lat Threshold) func(context.Context, *Env) Result {
 	return func(ctx context.Context, _ *Env) Result {
 		start := time.Now()
@@ -43,7 +50,7 @@ func bannerCheck(addr string, s config.MailServer, lat Threshold) func(context.C
 		if err != nil {
 			return Critf("banner: %v", err)
 		}
-		c.PrintfLine("QUIT")
+		quit(c)
 		if s.Expect != "" && !strings.Contains(msg, s.Expect) {
 			return Warnf("banner %q does not mention %s", msg, s.Expect)
 		}
@@ -76,7 +83,7 @@ func openRelayCheck(addr string, port int, cfg *config.OpenRelay) func(context.C
 			return Warnf("MAIL FROM rejected, relay not tested: %v", err)
 		}
 		code, msg, _ := step(0, "RCPT TO:<%s>", cfg.To)
-		c.PrintfLine("QUIT")
+		quit(c)
 		return EvalRelay(code, msg, cfg.Expect)
 	}
 }

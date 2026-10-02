@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"slices"
@@ -79,4 +80,90 @@ func CheckOnce(ctx context.Context, cfg *config.Config, match string, out io.Wri
 	}
 	tw.Flush()
 	return worst, nil
+}
+
+// Probes prints every network contact the hub makes, by destination, with steady-state rates.
+func Probes(cfg *config.Config, out io.Writer) error {
+	checks, err := check.Build(cfg)
+	if err != nil {
+		return err
+	}
+	type line struct {
+		what     string
+		interval time.Duration
+		checks   int
+		perRun   int
+	}
+	type dest struct {
+		name, port string
+		perHour    float64
+		lines      []*line
+	}
+	dests := map[string]*dest{}
+	maxRetries := 0
+	for _, c := range checks {
+		maxRetries = max(maxRetries, c.Retries)
+		for _, p := range c.Probes {
+			if h, _, err := net.SplitHostPort(p.Dest); err == nil {
+				p.Dest = h
+			}
+			k := p.Dest + " " + p.Port
+			d := dests[k]
+			if d == nil {
+				d = &dest{name: p.Dest, port: p.Port}
+				dests[k] = d
+			}
+			d.perHour += float64(p.Count) * float64(time.Hour) / float64(c.Interval)
+			i := slices.IndexFunc(d.lines, func(l *line) bool { return l.what == p.What && l.interval == c.Interval })
+			if i < 0 {
+				d.lines = append(d.lines, &line{what: p.What, interval: c.Interval})
+				i = len(d.lines) - 1
+			}
+			d.lines[i].checks++
+			d.lines[i].perRun += p.Count
+		}
+	}
+	keys := slices.Sorted(func(yield func(string) bool) {
+		for k := range dests {
+			if !yield(k) {
+				return
+			}
+		}
+	})
+	var total float64
+	for _, k := range keys {
+		d := dests[k]
+		total += d.perHour
+		fmt.Fprintf(out, "%s %s  %s\n", d.name, d.port, rate(d.perHour))
+		for _, l := range d.lines {
+			n := "1 check"
+			if l.checks > 1 {
+				n = fmt.Sprintf("%d checks", l.checks)
+			}
+			fmt.Fprintf(out, "    %-9s %s (%s every %s)\n",
+				rate(float64(l.perRun)*float64(time.Hour)/float64(l.interval)), l.what, n, every(l.interval))
+		}
+	}
+	fmt.Fprintf(out, "\n%d destinations, %s in all when healthy. A failing check reruns up to %d more times\n"+
+		"(retryInterval apart) before alerting, then keeps its normal interval; agent-derived checks make no contacts.\n",
+		len(keys), rate(total), maxRetries)
+	return nil
+}
+
+// rate formats contacts per hour, as per day when under one an hour.
+func rate(perHour float64) string {
+	if perHour < 1 {
+		return fmt.Sprintf("%.0f/day", perHour*24)
+	}
+	return fmt.Sprintf("%.0f/h", perHour)
+}
+
+func every(d time.Duration) string {
+	switch {
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%dm", d/time.Minute)
+	}
+	return d.String()
 }

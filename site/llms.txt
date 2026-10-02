@@ -13,6 +13,7 @@ Every page below is Markdown. llms-full.txt has all of them in one file.
 ## Using sitescope
 
 - [Checks](checks.md): every check, its id and thresholds
+- [Probes and alert volume](probes.md): what the hub contacts, how often, and how many emails that can mean
 - [Configuration](configuration.md): every settings key and environment variable
 - [NixOS module](nixos.md): options and the generated units
 - [Command line](cli.md): every subcommand

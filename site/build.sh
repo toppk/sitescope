@@ -14,6 +14,7 @@ pages=(
   "getting-started|Getting started|Start"
   "concepts|Concepts|Start"
   "checks|Checks|Use"
+  "probes|Probes and alert volume|Use"
   "configuration|Configuration|Use"
   "nixos|NixOS module|Use"
   "cli|Command line|Use"

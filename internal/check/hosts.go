@@ -31,9 +31,10 @@ func (b *builder) hosts() {
 	}
 	for _, h := range hs.Hosts {
 		agentID := "host." + h.Name + ".agent"
-		b.add(t, &Check{ID: agentID, Name: h.Name + " agent reachable", Area: "hosts", Run: agentCheck(h)})
+		b.add(t, &Check{ID: agentID, Name: h.Name + " agent reachable", Area: "hosts", Group: h.Name,
+			Probes: []Probe{urlProbe(h.URL, "GET /v1/report with the agent token")}, Run: agentCheck(h)})
 		d := func(id, name, area, section string, eval func(*report.Report, time.Time) Result) {
-			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: area,
+			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: area, Group: h.Name,
 				DependsOn: agentID, Run: fromReport(h.Name, section, stale, eval)})
 		}
 		d("disk", "disk usage", "hosts", "disks", func(r *report.Report, _ time.Time) Result { return EvalDisk(r, hs.Disk) })

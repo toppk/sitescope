@@ -13,7 +13,8 @@ SiteScope. One static Go binary:
   keeps 30+ days of history in `/var/lib/sitescope/history.db` (bbolt), emails
   state changes and a daily digest, pings a dead-man's-switch URL, and serves
   the status page on `127.0.0.1:8470` for a reverse proxy.
-- CLI: `unlock`, `lock`, `status`, `vault set|rm|list|set-password`, `check`.
+- CLI: `unlock`, `lock`, `status`, `vault set|rm|list|set-password`, `check`,
+  `probes` (every destination the hub contacts, and how often).
 
 Nothing about the infrastructure is hardcoded: every target comes from the
 JSON config that the NixOS module renders from `services.sitescope.settings`.
@@ -182,7 +183,7 @@ Reference (all optional; defaults shown):
 | key | default | notes |
 |---|---|---|
 | `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "30s"}` | every section and HTTP target takes the same four keys |
-| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
+| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (negative disables), `digestTime` (`"HH:MM"`, local time) | |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`) | thresholds are `{warn, crit}`, 0 disables a bound |

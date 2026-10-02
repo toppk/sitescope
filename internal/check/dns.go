@@ -7,6 +7,8 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -65,7 +67,42 @@ func primaryCheck(primary string, zones []string) func(context.Context, *Env) Re
 	}
 }
 
-func soaCheck(zone, server, primary string) func(context.Context, *Env) Result {
+// serials caches the primary's SOA serial per zone briefly, so every secondary check
+// in a round compares against one query instead of each asking again.
+type serials struct {
+	mu sync.Mutex
+	m  map[string]serialAt
+}
+
+type serialAt struct {
+	serial uint32
+	at     time.Time
+}
+
+const serialTTL = time.Minute
+
+func (s *serials) get(ctx context.Context, primary, zone string) (uint32, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e, ok := s.m[zone]; ok && time.Since(e.at) < serialTTL {
+		return e.serial, nil
+	}
+	p, err := query(ctx, primary, zone, dns.TypeSOA, false)
+	if err != nil {
+		return 0, err
+	}
+	ps, ok := soaSerial(p)
+	if !ok {
+		return 0, fmt.Errorf("primary has no SOA")
+	}
+	if s.m == nil {
+		s.m = map[string]serialAt{}
+	}
+	s.m[zone] = serialAt{ps, time.Now()}
+	return ps, nil
+}
+
+func soaCheck(zone, server, primary string, ps *serials) func(context.Context, *Env) Result {
 	return func(ctx context.Context, _ *Env) Result {
 		r, err := query(ctx, server, zone, dns.TypeSOA, false)
 		if err != nil {
@@ -84,15 +121,11 @@ func soaCheck(zone, server, primary string) func(context.Context, *Env) Result {
 		if primary == "" {
 			return Okf("serial %d", serial)
 		}
-		p, err := query(ctx, primary, zone, dns.TypeSOA, false)
+		want, err := ps.get(ctx, primary, zone)
 		if err != nil {
-			return Okf("serial %d (primary unreachable, not compared)", serial)
+			return Okf("serial %d (primary: %v; not compared)", serial, err)
 		}
-		ps, ok := soaSerial(p)
-		if !ok {
-			return Okf("serial %d (primary has no SOA, not compared)", serial)
-		}
-		return CompareSerial(serial, ps)
+		return CompareSerial(serial, want)
 	}
 }
 

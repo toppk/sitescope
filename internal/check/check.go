@@ -39,7 +39,18 @@ type Check struct {
 	Secret string
 	// DependsOn names the check whose result this one reads (an agent poll).
 	DependsOn string
-	Run       func(ctx context.Context, env *Env) Result
+	// Group is the host or target the check is about, for display; "" stands alone.
+	Group  string
+	Probes []Probe
+	Run    func(ctx context.Context, env *Env) Result
+}
+
+// Probe is one kind of network contact a run makes, listed by `sitescope probes`.
+type Probe struct {
+	Dest  string // address or host name
+	Port  string // e.g. "25/tcp"
+	What  string
+	Count int // contacts per run
 }
 
 type Env struct {

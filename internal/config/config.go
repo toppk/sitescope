@@ -86,6 +86,7 @@ type Hub struct {
 	Hostname      string   `json:"hostname"`
 	Title         string   `json:"title"`
 	Refresh       int      `json:"refresh"`
+	DocsURL       string   `json:"docsURL"`
 	RetentionDays int      `json:"retentionDays"`
 	SampleEvery   Duration `json:"sampleEvery"`
 	Concurrency   int      `json:"concurrency"`
@@ -344,6 +345,7 @@ func (c *Config) applyDefaults() {
 	if h.Refresh == 0 {
 		h.Refresh = 60
 	}
+	def(&h.DocsURL, "https://toppk.github.io/sitescope/")
 	if h.RetentionDays == 0 {
 		h.RetentionDays = 35
 	}

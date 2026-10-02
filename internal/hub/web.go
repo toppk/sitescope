@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -31,6 +32,7 @@ func (h *Hub) serveWeb(ctx context.Context) error {
 	mux.HandleFunc("GET /{$}", h.public)
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /status.json", h.statusJSON)
+	mux.Handle("GET /static/", staticFiles())
 	mux.Handle("GET /detail", h.auth(http.HandlerFunc(h.detail)))
 	mux.Handle("GET /detail/check", h.auth(http.HandlerFunc(h.checkPage)))
 	mux.Handle("GET /api/status", h.auth(http.HandlerFunc(h.apiStatus)))
@@ -51,10 +53,20 @@ func (h *Hub) serveWeb(ctx context.Context) error {
 func headers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+		hd.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; img-src 'self'; "+
+			"style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "+
+			"base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
+	})
+}
+
+func staticFiles() http.Handler {
+	files := http.FileServerFS(static)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		files.ServeHTTP(w, r)
 	})
 }
 
@@ -147,15 +159,18 @@ func (h *Hub) rows() []row {
 	return out
 }
 
+// light is one service on the public page; a grouped (class B) service shows no breakdown.
 type light struct {
-	Name   string
-	Status status.Status
-	Items  []item // per-check rows, for visibility public
+	ID, Name  string
+	Status    status.Status
+	OK, Total int
+	Grouped   bool
+	Groups    []grp[item]
 }
 
 type item struct {
-	Label  string
-	Status status.Status
+	Label, Group string
+	Status       status.Status
 }
 
 // rules is the public config, then one public rule per area for checks it doesn't match.
@@ -198,36 +213,49 @@ func publicLabel(p config.Public, c *check.Check) string {
 
 // lights computes the public page, one light per service name in rule order.
 func (h *Hub) lights(rows []row) []light {
-	var out []light
+	type acc struct {
+		name    string
+		sts     []status.Status
+		items   []item
+		grouped bool
+	}
+	var accs []*acc
 	idx := map[string]int{}
 	for _, p := range h.rules() {
-		if p.Visibility != config.VisPrivate {
-			if _, ok := idx[p.Name]; !ok {
-				idx[p.Name] = len(out)
-				out = append(out, light{Name: p.Name})
-			}
+		if _, ok := idx[p.Name]; !ok && p.Visibility != config.VisPrivate {
+			idx[p.Name] = len(accs)
+			accs = append(accs, &acc{name: p.Name})
 		}
 	}
-	sts := make([][]status.Status, len(out))
 	for _, r := range rows {
 		p := h.placement(r.Check)
 		if p.Visibility == config.VisPrivate || r.Status == status.Locked {
 			continue
 		}
-		i := idx[p.Name]
-		sts[i] = append(sts[i], r.Status)
+		a := accs[idx[p.Name]]
+		a.sts = append(a.sts, r.Status)
 		if p.Visibility == config.VisPublic {
-			out[i].Items = append(out[i].Items, item{publicLabel(p, r.Check), r.Status})
+			a.items = append(a.items, item{publicLabel(p, r.Check), r.Group, r.Status})
+		} else {
+			a.grouped = true
 		}
 	}
-	shown := out[:0]
-	for i, l := range out {
-		if len(sts[i]) > 0 {
-			l.Status = status.Worst(sts[i]...)
-			shown = append(shown, l)
+	var out []light
+	for i, a := range accs {
+		if len(a.sts) == 0 {
+			continue
 		}
+		l := light{ID: fmt.Sprintf("s%d", i), Name: a.name, Status: status.Worst(a.sts...), Total: len(a.sts),
+			Grouped: len(a.items) == 0}
+		for _, s := range a.sts {
+			if s == status.OK {
+				l.OK++
+			}
+		}
+		l.Groups = nest(l.ID, a.items, func(it item) string { return it.Group }, func(it item) status.Status { return it.Status })
+		out = append(out, l)
 	}
-	return shown
+	return out
 }
 
 func overall(ls []light) status.Status {
@@ -251,8 +279,20 @@ func overallAll(rows []row) status.Status {
 
 func (h *Hub) public(w http.ResponseWriter, _ *http.Request) {
 	ls := h.lights(h.rows())
-	h.render(w, "public", map[string]any{
-		"Lights": ls, "Overall": overall(ls), "Locked": !h.vault.Unlocked(),
+	var sts []status.Status
+	for _, l := range ls {
+		for _, g := range l.Groups {
+			for _, it := range g.Items {
+				sts = append(sts, it.Status)
+			}
+		}
+	}
+	sub := ""
+	if len(sts) > 0 {
+		sub = summary(sts)
+	}
+	h.render(w, "public", map[string]any{"Page": "status",
+		"Lights": ls, "Overall": overall(ls), "Summary": sub, "Locked": !h.vault.Unlocked(),
 	})
 }
 
@@ -272,8 +312,10 @@ func services(ls []light) []apiService {
 	out := []apiService{}
 	for _, l := range ls {
 		s := apiService{Name: l.Name, Status: l.Status}
-		for _, it := range l.Items {
-			s.Checks = append(s.Checks, apiItem{it.Label, it.Status})
+		for _, g := range l.Groups {
+			for _, it := range g.Items {
+				s.Checks = append(s.Checks, apiItem{it.Label, it.Group, it.Status})
+			}
 		}
 		out = append(out, s)
 	}
@@ -294,24 +336,45 @@ func (h *Hub) detail(w http.ResponseWriter, _ *http.Request) {
 		hist, _ := h.store.History(rows[i].ID, now.AddDate(0, 0, -historyDays), 0)
 		rows[i].Days = store.DailyWorst(hist, historyDays, now)
 	}
-	type group struct {
-		Name string
-		Rows []row
+	type area struct {
+		ID, Name  string
+		Status    status.Status
+		OK, Total int
+		Groups    []grp[row]
 	}
-	var groups []group
-	for _, a := range check.Areas {
-		g := group{Name: a.Name}
+	var areas []area
+	var all []status.Status
+	for i, a := range check.Areas {
+		var rs []row
 		for _, r := range rows {
 			if r.Area == a.ID {
-				g.Rows = append(g.Rows, r)
+				rs = append(rs, r)
+				all = append(all, r.Status)
 			}
 		}
-		slices.SortStableFunc(g.Rows, func(a, b row) int { return b.Status.Rank() - a.Status.Rank() })
-		if len(g.Rows) > 0 {
-			groups = append(groups, g)
+		if len(rs) == 0 {
+			continue
 		}
+		id := fmt.Sprintf("a%d", i)
+		gs := nest(id, rs, func(r row) string { return r.Group }, func(r row) status.Status { return r.Status })
+		ar := area{ID: id, Name: a.Name, Status: status.OK, Groups: gs}
+		var sts []status.Status
+		for _, g := range gs {
+			ar.OK += g.OK
+			ar.Total += g.Total
+			if g.Status != status.Locked {
+				sts = append(sts, g.Status)
+			}
+		}
+		if len(sts) > 0 {
+			ar.Status = status.Worst(sts...)
+		} else {
+			ar.Status = status.Locked
+		}
+		areas = append(areas, ar)
 	}
-	h.render(w, "detail", map[string]any{"Groups": groups, "Overall": overallAll(rows), "Locked": !h.vault.Unlocked()})
+	h.render(w, "detail", map[string]any{"Page": "detail", "Areas": areas, "Overall": overallAll(rows),
+		"Summary": summary(all), "Locked": !h.vault.Unlocked()})
 }
 
 func (h *Hub) checkPage(w http.ResponseWriter, r *http.Request) {
@@ -332,7 +395,7 @@ func (h *Hub) checkPage(w http.ResponseWriter, r *http.Request) {
 	}
 	rw := row{Check: c, State: st, Days: days}
 	rw.Vis, rw.Service, rw.PublicName = h.visibility(c)
-	h.render(w, "check", map[string]any{"Row": rw, "History": hist,
+	h.render(w, "check", map[string]any{"Page": "detail", "Row": rw, "History": hist,
 		"Locked": !h.vault.Unlocked()})
 }
 
@@ -379,11 +442,13 @@ type apiService struct {
 
 type apiItem struct {
 	Name   string        `json:"name"`
+	Group  string        `json:"group,omitempty"`
 	Status status.Status `json:"status"`
 }
 
 func (h *Hub) render(w http.ResponseWriter, name string, data map[string]any) {
 	data["Title"] = h.cfg.Hub.Title
+	data["Docs"] = h.cfg.Hub.DocsURL
 	data["Refresh"] = h.cfg.Hub.Refresh
 	data["Now"] = time.Now().UTC().Format("2006-01-02 15:04 UTC")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
