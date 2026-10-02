@@ -43,7 +43,8 @@ target) can override it with the same four keys:
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | `delegation` is the expected NS names |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | |
-| `tls` | `targets: [{name, host, port, starttls, families}]`, `days {20,7}` | `port` 443, or 25 with `starttls: "smtp"`; `families` `["4","6"]` |
+| `tls` | `targets: [{name, host, port, starttls, families, alpn}]`, `days {20,7}` | `port` 443, or 25 with `starttls: "smtp"`; `families` `["4","6"]`; `alpn: "h2"` warns unless h2 is chosen |
+| `ct` | `domains` (default `domains.names`), `issuers: ["Let's Encrypt"]`, `domainIssuers: {domain: [...]}`, `names`, `ignore`, `recent: "7d"`, `api`, `tokenSecret: "certspotter_token"` | Certificate Transparency through Cert Spotter; issuers match as substrings |
 | `http` | `targets: [{name, url, expectStatus: 200, latency {2,5}}]` | latency in seconds; redirects are not followed |
 | `mail.banner` | `servers: [{name, addrs, port: 25, expect}]`, `latency {3,10}` | |
 | `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |

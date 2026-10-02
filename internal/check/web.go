@@ -13,7 +13,7 @@ import (
 	"github.com/toppk/sitescope/internal/config"
 )
 
-func tlsCheck(host string, port int, network, starttls string, days Threshold) func(context.Context, *Env) Result {
+func tlsCheck(host string, port int, network, starttls, alpn string, days Threshold) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		var d net.Dialer
@@ -26,6 +26,9 @@ func tlsCheck(host string, port int, network, starttls string, days Threshold) f
 			conn.SetDeadline(dl)
 		}
 		cfg := &tls.Config{ServerName: host}
+		if alpn != "" && starttls == "" {
+			cfg.NextProtos = []string{alpn, "http/1.1"}
+		}
 		var state tls.ConnectionState
 		switch starttls {
 		case "":
@@ -56,6 +59,9 @@ func tlsCheck(host string, port int, network, starttls string, days Threshold) f
 		leaf := state.PeerCertificates[0]
 		r := EvalExpiry(leaf.NotAfter, env.now(), days, "certificate")
 		r.Message += ", issuer " + leaf.Issuer.CommonName
+		if len(cfg.NextProtos) > 0 {
+			r = EvalALPN(r, alpn, state.NegotiatedProtocol)
+		}
 		return r
 	}
 }
@@ -91,4 +97,17 @@ func noRedirect(c *http.Client) *http.Client {
 	cp := *c
 	cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &cp
+}
+
+// EvalALPN adds the negotiated protocol to r, warning when it isn't the one wanted.
+func EvalALPN(r Result, want, got string) Result {
+	if got == "" {
+		got = "none"
+	}
+	r.Message += ", ALPN " + got
+	if got != want {
+		r.Status = Worst(r.Status, Warn)
+		r.Message += " (want " + want + ")"
+	}
+	return r
 }

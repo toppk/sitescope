@@ -498,3 +498,49 @@ func TestReportsWindow(t *testing.T) {
 		t.Errorf("memory = %+v", got)
 	}
 }
+
+func TestEvalALPN(t *testing.T) {
+	if r := EvalALPN(Okf("certificate ok"), "h2", "h2"); r.Status != OK || !strings.HasSuffix(r.Message, "ALPN h2") {
+		t.Errorf("h2 = %+v", r)
+	}
+	if r := EvalALPN(Okf("certificate ok"), "h2", "http/1.1"); r.Status != Warn || !strings.Contains(r.Message, "(want h2)") {
+		t.Errorf("http/1.1 = %+v", r)
+	}
+	if r := EvalALPN(Critf("expired"), "h2", ""); r.Status != Crit || !strings.Contains(r.Message, "ALPN none") {
+		t.Errorf("no ALPN keeps the worse status: %+v", r)
+	}
+}
+
+func ctCert(issuer, sha, before string, names ...string) CTIssuance {
+	c := CTIssuance{CertSHA256: sha, DNSNames: names}
+	c.Issuer.FriendlyName = issuer
+	c.Issuer.Name = "C=US, O=" + issuer
+	c.NotBefore, _ = time.Parse("2006-01-02", before)
+	return c
+}
+
+func TestEvalCT(t *testing.T) {
+	now, _ := time.Parse("2006-01-02", "2026-10-02")
+	week := 7 * 24 * time.Hour
+	certs := []CTIssuance{
+		ctCert("SSL.com", "aa11", "2026-09-28", "*.example.org", "example.org"),
+		ctCert("Let's Encrypt", "bb22", "2026-10-01", "da.example.org"),
+		ctCert("Let's Encrypt", "cc33", "2026-08-23", "static.example.org"),
+	}
+	cdn := []string{"Let's Encrypt", "SSL.com"}
+	r := EvalCT(certs, cdn, nil, nil, now, week)
+	if r.Status != OK || !strings.Contains(r.Message, "3 valid certificates (Let's Encrypt 2, SSL.com 1)") ||
+		!strings.Contains(r.Message, "new in 7d: da.example.org (Let's Encrypt, 10-01), *.example.org example.org (SSL.com, 09-28)") {
+		t.Errorf("all allowed = %+v", r)
+	}
+	if r := EvalCT(certs, []string{"Let's Encrypt"}, nil, nil, now, week); r.Status != Crit || !strings.HasPrefix(r.Message, "unexpected issuer: *.example.org example.org (SSL.com") {
+		t.Errorf("an issuer not allowed is critical: %+v", r)
+	}
+	if r := EvalCT(certs, []string{"Let's Encrypt"}, nil, []string{"aa"}, now, week); r.Status != OK {
+		t.Errorf("an ignored certificate doesn't count: %+v", r)
+	}
+	if r := EvalCT(certs, cdn, []string{"example.org", `\*.example.org`, "da.example.org"}, nil, now, week); r.Status != Warn ||
+		!strings.Contains(r.Message, "unexpected name static.example.org") {
+		t.Errorf("a name outside the list warns: %+v", r)
+	}
+}

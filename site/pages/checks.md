@@ -38,7 +38,37 @@ Section `tls`, every 6 hours. `tls.NAME.PROTO.PORT.FAM` connects over each
 IP family, verifies the chain against the system roots and the hostname,
 and reports days until the leaf expires: warn under 20, crit under 7.
 `starttls: "smtp"` checks a mail server's certificate after `STARTTLS` on
-port 25.
+port 25. With `alpn: "h2"` the handshake offers h2 and http/1.1, and the
+check warns unless the server chooses h2.
+
+## Certificate Transparency
+
+Section `ct`, every 6 hours. Every public certificate is logged in
+Certificate Transparency logs, so a certificate you didn't ask for (a
+mis-issuing CA, or someone who briefly controlled your DNS or a web
+server) shows up there. `ct.DOMAIN` asks
+[Cert Spotter](https://sslmate.com/certspotter/) for the domain's
+currently valid certificates, subdomains included:
+
+- an issuer not in `issuers` (default Let's Encrypt) plus that domain's
+  `domainIssuers` is **crit**;
+- with `names` set, a certificate for any other name is **warn**;
+- certificates issued in the last `recent` (7 days) are listed, so a
+  renewal you didn't expect is visible.
+
+Acknowledge a certificate by adding its SHA-256 (or a prefix) to `ignore`.
+Domains default to `domains.names`. Requests are spaced 7 seconds apart to
+stay within Cert Spotter's free limit; a key in the vault as
+`certspotter_token` raises it.
+
+```nix
+ct = {
+  # Cloudflare's Universal SSL uses these CAs for proxied names
+  domainIssuers."bllue.org" = [ "SSL.com" "Google Trust Services" ];
+  # optional; "\\*" is a literal wildcard certificate name, "*" a glob
+  names = [ "da.bllue.org" "ne.bllue.org" "status.bllue.org" "zircon.chooser.us" "bllue.org" "\\*.bllue.org" ];
+};
+```
 
 ## HTTP
 

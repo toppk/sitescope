@@ -29,7 +29,8 @@ JSON config that the NixOS module renders from `services.sitescope.settings`.
 | dns (`dns.`) | primary answers SOA for every zone; per zone × secondary × IPv4/IPv6: SOA with `aa`, serial equal to the primary's; TLD delegation lists the expected NS; names resolve to expected IPs on a public resolver | 5m (delegation 1h) |
 | dns (`host.*.knot`) | Knot zones loaded, not near expiry, none missing | with agent poll |
 | domains (`domain.`) | RDAP registration expiry; warn 45 days, crit 14 | 12h |
-| tls (`tls.`) | certificate days left over HTTPS or SMTP STARTTLS, per IP family, chain verified; warn 20, crit 7 | 6h |
+| tls (`tls.`) | certificate days left over HTTPS or SMTP STARTTLS, per IP family, chain verified; warn 20, crit 7; optional ALPN (`alpn: "h2"`) | 6h |
+| tls (`ct.`) | Certificate Transparency (Cert Spotter): valid certificates for each domain from an unexpected CA (crit) or for unexpected names (warn) | 6h |
 | http (`http.`) | status code and latency | 1m |
 | mail (`mail.`) | SMTP banner per address; daily open-relay probe expecting 554; DNS blocklists through the local unbound | 5m / 24h / 1h |
 | mail (`host.*.postfix`) | queue size and oldest message age | with agent poll |
@@ -192,7 +193,8 @@ Reference (all optional; defaults shown):
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`, 0 disables a bound |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | .us and .co, missing from the IANA file, have built-in fallbacks |
-| `tls` | `targets: [{name, host, port, starttls: ""\|"smtp", families: ["4","6"]}]`, `days {20,7}` | |
+| `tls` | `targets: [{name, host, port, starttls: ""\|"smtp", families: ["4","6"], alpn}]`, `days {20,7}` | `alpn: "h2"` warns unless h2 is negotiated |
+| `ct` | `domains` (default `domains.names`), `issuers: ["Let's Encrypt"]`, `domainIssuers`, `names`, `ignore`, `recent: "7d"`, `tokenSecret: "certspotter_token"` | |
 | `http` | `targets: [{name, url, expectStatus: 200, latency {2,5} s}]` | redirects are not followed |
 | `mail.banner` | `servers: [{name, addrs, port: 25, expect}]`, `latency {3,10}` s | |
 | `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |

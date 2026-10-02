@@ -70,6 +70,7 @@ type Config struct {
 	DNS        *DNS        `json:"dns"`
 	Domains    *Domains    `json:"domains"`
 	TLS        *TLS        `json:"tls"`
+	CT         *CT         `json:"ct"`
 	HTTP       *HTTP       `json:"http"`
 	Mail       *Mail       `json:"mail"`
 	Linode     *Linode     `json:"linode"`
@@ -209,6 +210,20 @@ type Domains struct {
 	Servers map[string]string `json:"servers"`
 }
 
+// CT watches Certificate Transparency logs (through Cert Spotter) for certificates on our domains.
+type CT struct {
+	Timing
+	Domains []string `json:"domains"` // default domains.names
+	Issuers []string `json:"issuers"` // allowed issuers, matched as substrings of the issuer
+	// DomainIssuers adds issuers for one domain, e.g. a CDN's CAs.
+	DomainIssuers map[string][]string `json:"domainIssuers"`
+	Names         []string            `json:"names"`  // expected DNS names (globs); empty skips the name check
+	Ignore        []string            `json:"ignore"` // certificate SHA-256s, or prefixes, already looked at
+	Recent        Duration            `json:"recent"` // certificates this new are listed in the message
+	API           string              `json:"api"`
+	TokenSecret   string              `json:"tokenSecret"` // optional Cert Spotter API key in the vault
+}
+
 type TLS struct {
 	Timing
 	Targets []TLSTarget      `json:"targets"`
@@ -221,6 +236,7 @@ type TLSTarget struct {
 	Port     int      `json:"port"`
 	StartTLS string   `json:"starttls"`
 	Families []string `json:"families"`
+	ALPN     string   `json:"alpn"` // protocol the server must choose, e.g. "h2"
 }
 
 type HTTP struct {
@@ -395,6 +411,19 @@ func (c *Config) applyDefaults() {
 	if c.TLS != nil {
 		c.TLS.Days = c.TLS.Days.Or(status.Threshold{Warn: 20, Crit: 7})
 	}
+	if ct := c.CT; ct != nil {
+		if len(ct.Domains) == 0 && c.Domains != nil {
+			ct.Domains = c.Domains.Names
+		}
+		if len(ct.Issuers) == 0 {
+			ct.Issuers = []string{"Let's Encrypt"}
+		}
+		if ct.Recent == 0 {
+			ct.Recent = Duration(7 * 24 * time.Hour)
+		}
+		def(&ct.API, "https://api.certspotter.com/v1")
+		def(&ct.TokenSecret, "certspotter_token")
+	}
 	if c.DNS != nil {
 		def(&c.DNS.PublicResolver, "1.1.1.1")
 	}
@@ -465,6 +494,13 @@ func (c *Config) validate() error {
 		for _, g := range p.Checks {
 			if _, err := path.Match(g, ""); err != nil {
 				return fmt.Errorf("config: public[%d].checks %q: %w", i, g, err)
+			}
+		}
+	}
+	if c.CT != nil {
+		for _, g := range c.CT.Names {
+			if _, err := path.Match(g, ""); err != nil {
+				return fmt.Errorf("config: ct.names %q: %w", g, err)
 			}
 		}
 	}

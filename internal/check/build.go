@@ -77,6 +77,7 @@ func Build(cfg *config.Config) (checks []*Check, err error) {
 	b.dns()
 	b.domains()
 	b.tls()
+	b.ct()
 	b.http()
 	b.mail()
 	b.linode()
@@ -175,14 +176,34 @@ func (b *builder) tls() {
 				proto = tg.StartTLS
 			}
 			what := "TLS handshake"
+			if tg.ALPN != "" {
+				what += " offering ALPN " + tg.ALPN + " and http/1.1"
+			}
 			if tg.StartTLS != "" {
 				what = "EHLO, STARTTLS, handshake, QUIT"
 			}
 			b.add(t, &Check{ID: fmt.Sprintf("tls.%s.%s.%d.v%s", name, proto, port, f),
 				Name: fmt.Sprintf("Certificate %s (%s:%d, IPv%s)", name, proto, port, f), Area: "tls", Group: name,
 				Probes: []Probe{{host + " (IPv" + f + ")", fmt.Sprintf("%d/tcp", port), what, 1}},
-				Run:    tlsCheck(host, port, "tcp"+f, tg.StartTLS, c.Days)})
+				Run:    tlsCheck(host, port, "tcp"+f, tg.StartTLS, tg.ALPN, c.Days)})
 		}
+	}
+}
+
+func (b *builder) ct() {
+	c := b.cfg.CT
+	if c == nil {
+		return
+	}
+	// requests are spaced ctSpacing apart, so the timeout covers waiting behind the other domains
+	t := c.Timing.Merge(config.Timing{Interval: config.Duration(6 * time.Hour),
+		Timeout: config.Duration(ctSpacing*time.Duration(len(c.Domains)) + 30*time.Second), RetryInterval: config.Duration(10 * time.Minute)})
+	api := &ctAPI{base: strings.TrimSuffix(c.API, "/"), secret: c.TokenSecret}
+	for _, d := range c.Domains {
+		d = fqdn(d)
+		b.add(t, &Check{ID: "ct." + d, Name: "CT log certificates for " + d, Area: "tls", Group: "CT logs",
+			Probes: []Probe{urlProbe(c.API, "HTTPS GET currently valid certificates for the domain and its subdomains")},
+			Run:    ctCheck(api, d, c)})
 	}
 }
 
