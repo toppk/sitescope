@@ -27,8 +27,9 @@ only, probes only ask, and the open-relay probe stops at `RCPT TO`.
   hub host, through a mode 0660 socket.
 - **Secrets from outside the store.** The environment file is not in
   `/nix/store`, where every user could read it.
-- **The public page says nothing specific.** Area lights and an overall
-  status. No names, addresses, versions or messages.
+- **The public page says only what you allow.** Each check is public
+  under a label you choose, grouped into a service light, or private (the
+  default for checks no rule matches). Messages are never public.
 
 ## Process hardening
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
+	"slices"
 	"strconv"
 	"time"
 
@@ -112,10 +114,32 @@ type Alerts struct {
 	DigestTime       string   `json:"digestTime"`
 }
 
-// Public is one traffic light on the public page, covering whole areas.
+// Public is one rule for the public page; each check takes the first rule that matches it.
 type Public struct {
-	Name  string   `json:"name"`
-	Areas []string `json:"areas"`
+	Name   string   `json:"name"`
+	Areas  []string `json:"areas"`
+	Checks []string `json:"checks"` // check id globs
+	// public: one row per check; grouped (default): one light; private: not on the public page.
+	Visibility string            `json:"visibility"`
+	Labels     map[string]string `json:"labels"` // check id -> public label
+}
+
+const (
+	VisPublic  = "public"
+	VisGrouped = "grouped"
+	VisPrivate = "private"
+)
+
+func (p Public) Matches(id, area string) bool {
+	if slices.Contains(p.Areas, area) {
+		return true
+	}
+	for _, g := range p.Checks {
+		if ok, _ := path.Match(g, id); ok {
+			return true
+		}
+	}
+	return false
 }
 
 type Hosts struct {
@@ -289,6 +313,11 @@ func Parse(b []byte) (*Config, error) {
 func intp(i int) *int { return &i }
 
 func (c *Config) applyDefaults() {
+	for i := range c.Public {
+		if c.Public[i].Visibility == "" {
+			c.Public[i].Visibility = VisGrouped
+		}
+	}
 	c.Defaults = c.Defaults.Merge(Timing{
 		Interval:      Duration(5 * time.Minute),
 		Timeout:       Duration(10 * time.Second),
@@ -385,6 +414,24 @@ func (c *Config) applyDefaults() {
 func (c *Config) validate() error {
 	if a := c.Alerts; a.Enabled && (a.From == "" || len(a.To) == 0) {
 		return fmt.Errorf("config: alerts.enabled needs alerts.from and alerts.to")
+	}
+	for i, p := range c.Public {
+		switch p.Visibility {
+		case VisPublic, VisGrouped, VisPrivate:
+		default:
+			return fmt.Errorf("config: public[%d].visibility %q, want public, grouped or private", i, p.Visibility)
+		}
+		if p.Name == "" && p.Visibility != VisPrivate {
+			return fmt.Errorf("config: public[%d] needs a name", i)
+		}
+		if len(p.Areas) == 0 && len(p.Checks) == 0 {
+			return fmt.Errorf("config: public[%d] needs areas or checks", i)
+		}
+		for _, g := range p.Checks {
+			if _, err := path.Match(g, ""); err != nil {
+				return fmt.Errorf("config: public[%d].checks %q: %w", i, g, err)
+			}
+		}
 	}
 	if d := c.Alerts.DigestTime; d != "" {
 		if _, _, err := ParseClock(d); err != nil {

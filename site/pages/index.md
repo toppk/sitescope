@@ -66,9 +66,9 @@ open-relay probe ends the conversation before any message is sent.
   vault. The hub starts locked; an operator unlocks it from a shell. The
   decrypted values sit in mlocked memory that is never swapped or dumped,
   and are zeroed on lock.
-- **The public page says nothing useful to an attacker.** Traffic lights
-  per service, and nothing else: no hostnames, addresses, versions or
-  error text.
+- **You choose what the public page reveals.** Each check is listed under
+  a label, folded into a service light, or kept off the page entirely.
+  Hostnames, addresses, versions and error text are never shown.
 - **One email per real change.** A failure must repeat before it counts,
   a recovery counts at once, and a flapping check is held back.
 - **Small.** The hub runs in about 20 MB with 70 checks; an agent in about

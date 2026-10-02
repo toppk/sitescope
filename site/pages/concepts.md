@@ -13,8 +13,10 @@ expands each section into flat checks, each with a stable id such as
 across restarts, so history follows them.
 
 Each check belongs to an **area**: `dns`, `domains`, `tls`, `http`, `mail`,
-`hosts`, `hygiene` or `cloud`. Areas are what the public page groups into
-lights.
+`hosts`, `hygiene` or `cloud`. Each check also has a **visibility**:
+`public` (listed on the public page under a label), `grouped` (folded into
+a service light) or `private` (not on the public page at all). See
+[Status page and API](web.html#visibility).
 
 Every check has its own timing: `interval`, `timeout`, `retries` and
 `retryInterval`, set per section or inherited from `defaults`.

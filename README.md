@@ -97,9 +97,12 @@ Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`).
 ## Web
 
 - `/`: public. Overall status and one traffic light per service, plus the
-  vault-locked banner. No hostnames, addresses, versions or error text.
-  Services are whole areas, configured in `public`. By default each area
-  gets its own light.
+  vault-locked banner. Each check is `public` (its own row, under a label
+  from `labels`), `grouped` (folded into its service's light) or `private`
+  (not shown, not counted). `public` is an ordered list of rules matched by
+  area or check id glob; first match wins, unmatched checks are private, and
+  with no rules each area is one grouped light. Messages, hostnames,
+  addresses and versions are never shown.
 - `/detail`, `/detail/check?id=…`, `/api/status`: HTTP basic auth, user
   `admin`, password checked against the bcrypt hash in the vault. Read-only.
   Each check has its last message, retries, 30-day strip and history.
@@ -179,7 +182,7 @@ Reference (all optional; defaults shown):
 | `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "30s"}` | every section and HTTP target takes the same four keys |
 | `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `digestTime` (`"HH:MM"`, local time) | |
-| `public` | one light per area | `[{name, areas: [...]}]`; areas: dns mail http tls domains hosts hygiene cloud |
+| `public` | one grouped light per area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`) | thresholds are `{warn, crit}`, 0 disables a bound |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | .us and .co, missing from the IANA file, have built-in fallbacks |

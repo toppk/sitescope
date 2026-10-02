@@ -48,6 +48,7 @@ a{color:inherit}.card{background:var(--card);border:1px solid var(--line);border
 .dot{width:12px;height:12px;border-radius:50%;flex:none;display:inline-block}.ok{background:var(--ok)}.warn{background:var(--warn)}.crit{background:var(--crit)}.unknown{background:var(--unknown)}.locked{background:var(--locked)}
 .banner{padding:10px 14px;margin-bottom:16px;border-left:4px solid var(--warn)}
 ul.svc{list-style:none;margin:0;padding:0}ul.svc li{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}ul.svc li:first-child{border-top:0}
+ul.svc li.sub{padding-left:40px;font-size:14px;border-top-style:dashed}
 .lbl{margin-left:auto;color:var(--mut);font-size:14px}footer{color:var(--mut);font-size:13px;margin-top:16px}
 .row{display:grid;grid-template-columns:14px 1fr;gap:4px 10px;padding:10px 14px;border-top:1px solid var(--line)}.row:first-child{border-top:0}.row .dot{margin-top:5px}
 .msg{grid-column:2;color:var(--mut);font-size:13px;overflow-wrap:anywhere}.meta{grid-column:2;color:var(--mut);font-size:12px}
@@ -68,8 +69,11 @@ var templates = template.Must(template.New("").Funcs(funcs).Parse(`
 <h1>{{.Title}}</h1>
 <div class="card hero"><span class="dot {{.Overall}}"></span>{{headline .Overall}}</div>
 {{template "locked" .}}
-<div class="card"><ul class="svc">{{range .Lights}}<li><span class="dot {{.Status}}"></span>{{.Name}}<span class="lbl">{{word .Status}}</span></li>{{end}}</ul></div>
+<div class="card"><ul class="svc">{{range .Lights}}<li><span class="dot {{.Status}}"></span>{{.Name}}<span class="lbl">{{word .Status}}</span></li>
+{{range .Items}}<li class="sub"><span class="dot {{.Status}}"></span>{{.Label}}<span class="lbl">{{word .Status}}</span></li>{{end}}{{end}}</ul></div>
 {{template "foot" .}}{{end}}
+
+{{define "vis"}}{{if eq .Vis "public"}}public as &ldquo;{{.PublicName}}&rdquo; under {{.Service}}{{else if eq .Vis "grouped"}}grouped into {{.Service}}{{else}}private{{end}}{{end}}
 
 {{define "strip"}}<div class="strip" title="last 30 days, oldest first">{{range .}}<i class="{{.}}"></i>{{end}}</div>{{end}}
 
@@ -80,7 +84,7 @@ var templates = template.Must(template.New("").Funcs(funcs).Parse(`
 {{range .Groups}}<h2>{{.Name}}</h2><div class="card">{{range .Rows}}
 <div class="row"><span class="dot {{.Status}}"></span><div><a href="/detail/check?id={{.ID}}">{{.Name}}</a>{{if .Retrying}} &middot; retrying {{.Retrying}}/{{.Retries}} ({{.Pending}}){{end}}</div>
 <div class="msg">{{.Message}}</div>
-<div class="meta">{{.Status}} since {{ts .Since}} &middot; checked {{ago .LastRun}} &middot; {{.TookMS}} ms</div>
+<div class="meta">{{.Status}} since {{ts .Since}} &middot; checked {{ago .LastRun}} &middot; {{.TookMS}} ms &middot; {{template "vis" .}}</div>
 {{template "strip" .Days}}</div>{{end}}</div>{{end}}
 {{template "foot" .}}{{end}}
 
@@ -91,6 +95,7 @@ var templates = template.Must(template.New("").Funcs(funcs).Parse(`
 <dt>Last result</dt><dd>{{.Message}}</dd>
 <dt>Last run</dt><dd>{{ago .LastRun}}, {{.TookMS}} ms</dd>
 <dt>Check</dt><dd>{{.ID}} &middot; every {{dur .Interval}}, timeout {{dur .Timeout}}, {{.Retries}} retries</dd>
+<dt>Public page</dt><dd>{{template "vis" .}}</dd>
 <dt>Notified</dt><dd>{{.Notified}} {{if not .NotifiedAt.IsZero}}at {{ts .NotifiedAt}}{{end}}</dd>
 <dt>30 days</dt><dd>{{template "strip" .Days}}</dd>
 </dl></div>{{end}}

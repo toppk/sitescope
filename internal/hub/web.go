@@ -16,6 +16,7 @@ import (
 
 	"github.com/toppk/sitescope/internal/alert"
 	"github.com/toppk/sitescope/internal/check"
+	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/status"
 	"github.com/toppk/sitescope/internal/store"
 )
@@ -129,7 +130,8 @@ func clearAuthCache() {
 type row struct {
 	*check.Check
 	alert.State
-	Days []status.Status
+	Days                     []status.Status
+	Vis, Service, PublicName string
 }
 
 func (h *Hub) rows() []row {
@@ -137,7 +139,9 @@ func (h *Hub) rows() []row {
 	defer h.mu.Unlock()
 	out := make([]row, 0, len(h.checks))
 	for _, c := range h.checks {
-		out = append(out, row{Check: c, State: *h.states[c.ID]})
+		r := row{Check: c, State: *h.states[c.ID]}
+		r.Vis, r.Service, r.PublicName = h.visibility(c)
+		out = append(out, r)
 	}
 	return out
 }
@@ -145,33 +149,74 @@ func (h *Hub) rows() []row {
 type light struct {
 	Name   string
 	Status status.Status
+	Items  []item // per-check rows, for visibility public
 }
 
-// lights computes the public per-service status from whole areas.
+type item struct {
+	Label  string
+	Status status.Status
+}
+
+// rules is the public config, or one grouped light per area when none is set.
+func (h *Hub) rules() []config.Public {
+	if len(h.cfg.Public) > 0 {
+		return h.cfg.Public
+	}
+	var out []config.Public
+	for _, a := range check.Areas {
+		out = append(out, config.Public{Name: a.Name, Areas: []string{a.ID}, Visibility: config.VisGrouped})
+	}
+	return out
+}
+
+// placement is the rule a check falls under; -1 means no rule, so private.
+func (h *Hub) placement(c *check.Check) (int, config.Public) {
+	for i, p := range h.rules() {
+		if p.Matches(c.ID, c.Area) {
+			return i, p
+		}
+	}
+	return -1, config.Public{Visibility: config.VisPrivate}
+}
+
+// visibility describes where a check appears publicly, for the detail view and API.
+func (h *Hub) visibility(c *check.Check) (vis, service, label string) {
+	_, p := h.placement(c)
+	if p.Visibility == config.VisPrivate {
+		return config.VisPrivate, "", ""
+	}
+	if p.Visibility == config.VisPublic {
+		label = publicLabel(p, c)
+	}
+	return p.Visibility, p.Name, label
+}
+
+func publicLabel(p config.Public, c *check.Check) string {
+	if l := p.Labels[c.ID]; l != "" {
+		return l
+	}
+	return c.Name
+}
+
+// lights computes the public page; private checks and locked ones count nowhere.
 func (h *Hub) lights(rows []row) []light {
-	type svc struct {
-		name  string
-		areas []string
-	}
-	var svcs []svc
-	for _, p := range h.cfg.Public {
-		svcs = append(svcs, svc{p.Name, p.Areas})
-	}
-	if len(svcs) == 0 {
-		for _, a := range check.Areas {
-			svcs = append(svcs, svc{a.Name, []string{a.ID}})
+	rules := h.rules()
+	sts := make([][]status.Status, len(rules))
+	items := make([][]item, len(rules))
+	for _, r := range rows {
+		i, p := h.placement(r.Check)
+		if i < 0 || p.Visibility == config.VisPrivate || r.Status == status.Locked {
+			continue
+		}
+		sts[i] = append(sts[i], r.Status)
+		if p.Visibility == config.VisPublic {
+			items[i] = append(items[i], item{publicLabel(p, r.Check), r.Status})
 		}
 	}
 	var out []light
-	for _, s := range svcs {
-		var sts []status.Status
-		for _, r := range rows {
-			if slices.Contains(s.areas, r.Area) && r.Status != status.Locked {
-				sts = append(sts, r.Status)
-			}
-		}
-		if len(sts) > 0 {
-			out = append(out, light{s.name, status.Worst(sts...)})
+	for i, p := range rules {
+		if len(sts[i]) > 0 {
+			out = append(out, light{p.Name, status.Worst(sts[i]...), items[i]})
 		}
 	}
 	return out
@@ -181,6 +226,17 @@ func overall(ls []light) status.Status {
 	var sts []status.Status
 	for _, l := range ls {
 		sts = append(sts, l.Status)
+	}
+	return status.Worst(sts...)
+}
+
+// overallAll is the worst status of every check, private ones included.
+func overallAll(rows []row) status.Status {
+	var sts []status.Status
+	for _, r := range rows {
+		if r.Status != status.Locked {
+			sts = append(sts, r.Status)
+		}
 	}
 	return status.Worst(sts...)
 }
@@ -216,8 +272,7 @@ func (h *Hub) detail(w http.ResponseWriter, _ *http.Request) {
 			groups = append(groups, g)
 		}
 	}
-	ls := h.lights(rows)
-	h.render(w, "detail", map[string]any{"Groups": groups, "Overall": overall(ls), "Locked": !h.vault.Unlocked()})
+	h.render(w, "detail", map[string]any{"Groups": groups, "Overall": overallAll(rows), "Locked": !h.vault.Unlocked()})
 }
 
 func (h *Hub) checkPage(w http.ResponseWriter, r *http.Request) {
@@ -236,20 +291,25 @@ func (h *Hub) checkPage(w http.ResponseWriter, r *http.Request) {
 	if len(hist) > 500 {
 		hist = hist[:500]
 	}
-	h.render(w, "check", map[string]any{"Row": row{Check: c, State: st, Days: days}, "History": hist,
+	rw := row{Check: c, State: st, Days: days}
+	rw.Vis, rw.Service, rw.PublicName = h.visibility(c)
+	h.render(w, "check", map[string]any{"Row": rw, "History": hist,
 		"Locked": !h.vault.Unlocked()})
 }
 
 type apiCheck struct {
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Area     string        `json:"area"`
-	Status   status.Status `json:"status"`
-	Since    time.Time     `json:"since"`
-	LastRun  time.Time     `json:"lastRun"`
-	TookMS   int64         `json:"tookMs"`
-	Message  string        `json:"message"`
-	Retrying int           `json:"retrying,omitempty"`
+	ID         string        `json:"id"`
+	Name       string        `json:"name"`
+	Area       string        `json:"area"`
+	Status     status.Status `json:"status"`
+	Since      time.Time     `json:"since"`
+	LastRun    time.Time     `json:"lastRun"`
+	TookMS     int64         `json:"tookMs"`
+	Message    string        `json:"message"`
+	Retrying   int           `json:"retrying,omitempty"`
+	Visibility string        `json:"visibility"`
+	Service    string        `json:"service,omitempty"`
+	PublicName string        `json:"publicName,omitempty"`
 }
 
 func (h *Hub) apiStatus(w http.ResponseWriter, _ *http.Request) {
@@ -257,17 +317,23 @@ func (h *Hub) apiStatus(w http.ResponseWriter, _ *http.Request) {
 	out := struct {
 		Time     time.Time     `json:"time"`
 		Overall  status.Status `json:"overall"`
+		Public   status.Status `json:"publicOverall"`
 		Locked   bool          `json:"vaultLocked"`
 		Services []apiService  `json:"services"`
 		Checks   []apiCheck    `json:"checks"`
-	}{Time: time.Now().UTC(), Locked: !h.vault.Unlocked()}
+	}{Time: time.Now().UTC(), Locked: !h.vault.Unlocked(), Overall: overallAll(rows)}
 	ls := h.lights(rows)
-	out.Overall = overall(ls)
+	out.Public = overall(ls)
 	for _, l := range ls {
-		out.Services = append(out.Services, apiService{l.Name, l.Status})
+		s := apiService{Name: l.Name, Status: l.Status}
+		for _, it := range l.Items {
+			s.Checks = append(s.Checks, apiItem{it.Label, it.Status})
+		}
+		out.Services = append(out.Services, s)
 	}
 	for _, r := range rows {
-		out.Checks = append(out.Checks, apiCheck{r.ID, r.Name, r.Area, r.Status, r.Since, r.LastRun, r.TookMS, r.Message, r.Retrying})
+		out.Checks = append(out.Checks, apiCheck{r.ID, r.Name, r.Area, r.Status, r.Since, r.LastRun, r.TookMS,
+			r.Message, r.Retrying, r.Vis, r.Service, r.PublicName})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
@@ -276,6 +342,12 @@ func (h *Hub) apiStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 type apiService struct {
+	Name   string        `json:"name"`
+	Status status.Status `json:"status"`
+	Checks []apiItem     `json:"checks,omitempty"`
+}
+
+type apiItem struct {
 	Name   string        `json:"name"`
 	Status status.Status `json:"status"`
 }

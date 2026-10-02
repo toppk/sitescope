@@ -112,6 +112,49 @@ func TestPublicPageRevealsNothing(t *testing.T) {
 	}
 }
 
+func TestVisibilityClasses(t *testing.T) {
+	h := testHub(t)
+	h.cfg.Public = []config.Public{
+		{Name: "Website", Checks: []string{"http.*"}, Visibility: config.VisPublic, Labels: map[string]string{"http.portal": "Customer portal"}},
+		{Checks: []string{"dns.soa.*"}, Visibility: config.VisPrivate},
+		{Name: "DNS", Areas: []string{"dns"}, Visibility: config.VisGrouped},
+	}
+	for range 3 {
+		h.handle(result{h.byID["dns.soa.example.org.alpha.v4"], check.Critf("no answer"), time.Now()})
+	}
+	h.handle(result{h.byID["dns.primary"], check.Okf("all zones"), time.Now()})
+	h.handle(result{h.byID["http.portal"], check.Okf("status 200 in 5ms"), time.Now()})
+	w := httptest.NewRecorder()
+	h.public(w, httptest.NewRequest("GET", "/", nil))
+	page := w.Body.String()
+	if !strings.Contains(page, "Customer portal") || !strings.Contains(page, "Website") {
+		t.Error("public check should be listed under its label")
+	}
+	if strings.Contains(page, "Outage") || strings.Contains(page, "Mail") {
+		t.Error("private and unmatched checks must not show or count")
+	}
+	if _, svc, _ := h.visibility(h.byID["dns.primary"]); svc != "DNS" {
+		t.Errorf("dns.primary grouped into %q", svc)
+	}
+	if vis, _, _ := h.visibility(h.byID["mail.banner.alpha.v4"]); vis != config.VisPrivate {
+		t.Error("checks matching no rule are private")
+	}
+	w = httptest.NewRecorder()
+	h.detail(w, httptest.NewRequest("GET", "/detail", nil))
+	if d := w.Body.String(); !strings.Contains(d, "public as &ldquo;Customer portal&rdquo; under Website") ||
+		!strings.Contains(d, "grouped into DNS") || !strings.Contains(d, "private") || !strings.Contains(d, "Major outage") {
+		t.Error("detail view should show every check's visibility and the full overall status")
+	}
+	w = httptest.NewRecorder()
+	h.checkPage(w, httptest.NewRequest("GET", "/detail/check?id=dns.primary", nil))
+	if !strings.Contains(w.Body.String(), "grouped into DNS") {
+		t.Error("check page lacks visibility")
+	}
+	if _, err := config.Parse([]byte(`{"public": [{"name": "x", "areas": ["dns"], "visibility": "secret"}]}`)); err == nil {
+		t.Error("bad visibility accepted")
+	}
+}
+
 func TestDetailNeedsUnlockedVaultAndPassword(t *testing.T) {
 	h := testHub(t)
 	srv := httptest.NewServer(h.auth(http.HandlerFunc(h.apiStatus)))

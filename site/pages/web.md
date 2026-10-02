@@ -11,15 +11,58 @@ front of it.
 ## Public
 
 `/`
-:   The overall status and one light per service, the time of the last
-    update, and a banner while the vault is locked. Services are groups of
-    areas from `public`; by default each area is its own light. Nothing
-    else: no hostnames, addresses, check names, versions or messages. The
-    page reloads every `hub.refresh` seconds and works without JavaScript.
+:   The overall status, one light per service, the time of the last update,
+    and a banner while the vault is locked. What each check contributes
+    depends on its visibility, below. Messages, hostnames, addresses and
+    versions are never shown. The page reloads every `hub.refresh` seconds
+    and works without JavaScript.
 
 `/healthz`
 :   200 while the scheduler is ticking, 503 if it has stalled. For the
     proxy's health checks.
+
+## Visibility
+
+Every check has one of three visibility classes, which decide how much of
+it the public page shows:
+
+| class | visibility | on the public page |
+|---|---|---|
+| A | `public` | its own row, with a label you choose, under its service's light |
+| B | `grouped` | folded into its service's light; nothing about the check itself |
+| C | `private` | nowhere: no row, no light, and it doesn't count toward the overall status |
+
+The detail view and `/api/status` always show every check, and say which
+class each one is in.
+
+Classes come from the rules in `public`. Each check takes the **first**
+rule it matches, by area or by check id glob (`*` matches any run of
+characters, `?` one). A check that matches no rule is private. When
+`public` isn't set at all, every area is one grouped light.
+
+```nix
+public = [
+  # A: listed one by one, with labels that give nothing away
+  { name = "Website"; visibility = "public";
+    checks = [ "http.www" "http.shop" ];
+    labels = { "http.www" = "Main site"; "http.shop" = "Shop"; }; }
+
+  # C: rules for private checks come before the broader rules they'd otherwise match
+  { visibility = "private"; checks = [ "dns.primary" "host.*.wireguard" ]; }
+
+  # B: whole areas behind one light each
+  { name = "DNS"; areas = [ "dns" ]; }
+  { name = "Mail"; areas = [ "mail" ]; }
+  { name = "Servers"; areas = [ "hosts" "hygiene" ]; }
+  # domains, tls and cloud match nothing, so they are private
+];
+```
+
+::: warning
+A `public` row without a label shows the check's own name, such as
+"Certificate mx.example.org (smtp:25, IPv4)". Give every class A check a
+label unless its name is already fine to publish.
+:::
 
 ## Behind authentication
 
@@ -30,7 +73,8 @@ and the cache is cleared on `lock`.
 
 `/detail`
 :   Every check grouped by area, with its status, how long it has had it,
-    its last message, and retry progress.
+    its last message, retry progress and visibility. The overall status
+    here includes private checks.
 
 `/detail/check?id=ID`
 :   One check: timing, a 30-day strip of daily worst status, and its
@@ -43,8 +87,10 @@ and the cache is cleared on `lock`.
 {
   "time": "2026-10-01T12:00:00Z",
   "overall": "warn",
+  "publicOverall": "warn",
   "vaultLocked": false,
   "services": [
+    { "name": "Website", "status": "ok", "checks": [ { "name": "Main site", "status": "ok" } ] },
     { "name": "DNS", "status": "ok" },
     { "name": "Mail", "status": "warn" }
   ],
@@ -57,13 +103,17 @@ and the cache is cleared on `lock`.
       "since": "2026-10-01T11:42:10Z",
       "lastRun": "2026-10-01T11:59:31Z",
       "tookMs": 0,
-      "message": "34 queued, oldest 41m"
+      "message": "34 queued, oldest 41m",
+      "visibility": "grouped",
+      "service": "Mail"
     }
   ]
 }
 ```
 
-`retrying` appears on a check that is in the middle of its retries.
+`overall` covers every check and `publicOverall` only what the public page
+counts. `retrying` appears on a check that is in the middle of its retries;
+`publicName` on a class A check.
 
 ## Headers
 
