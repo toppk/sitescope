@@ -33,7 +33,11 @@ func cloudflareCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
 					ID string `json:"id"`
 				} `json:"result"`
 			}
-			if err := getJSON(ctx, env, base+"/zones?name="+url.QueryEscape(c.Zone), hdr, &z); err != nil {
+			q := url.Values{"name": {c.Zone}}
+			if c.AccountID != "" {
+				q.Set("account.id", c.AccountID)
+			}
+			if err := getJSON(ctx, env, base+"/zones?"+q.Encode(), hdr, &z); err != nil {
 				return Unknownf("zone lookup: %v", err)
 			}
 			if len(z.Result) == 0 {

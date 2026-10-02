@@ -194,7 +194,7 @@ Reference (all optional; defaults shown):
 | `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |
 | `mail.blocklists` | `resolver: "127.0.0.1:53"`, `ips`, `lists: [{zone, ipv6, crit}]` | `127.255.255.x` answers (refused) don't count as listed |
 | `linode` | `tokenSecret: "linode_token"`, `instances: [{name, id}]`, `uninvoiced {}` USD, `transfer {80,95}` %, `eventWindow: "24h"` | |
-| `cloudflare` | `tokenSecret: "cloudflare_token"`, `zone`, `zoneId`, `expected: [{type, name, content, priority}]`, `watch: [{type, name}]` | missing expected record: crit. Any other record with an expected name/type (or a watched one): warn |
+| `cloudflare` | `tokenSecret: "cloudflare_token"`, `zone`, `zoneId`, `accountId`, `expected: [{type, name, content, priority}]`, `watch: [{type, name}]` | missing expected record: crit. Any other record with an expected name/type (or a watched one): warn |
 | `agent` | `listen`, `wgInterface: "wg0"`, `postfix`, `knot`, `knotSocket`, command paths | set by the module |
 
 Environment (`environmentFile`): `SITESCOPE_AGENT_TOKEN` (hub and agents, the

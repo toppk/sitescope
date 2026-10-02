@@ -283,6 +283,7 @@ type Cloudflare struct {
 	API         string      `json:"api"`
 	Zone        string      `json:"zone"`
 	ZoneID      string      `json:"zoneId"`
+	AccountID   string      `json:"accountId"` // narrows the zone lookup when the token sees several accounts
 	Expected    []DNSRecord `json:"expected"`
 	// Extra name/type pairs where any record not in Expected counts as drift.
 	Watch []DNSRecord `json:"watch"`
