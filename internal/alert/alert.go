@@ -49,12 +49,18 @@ func (s *State) Due(now time.Time, minInterval time.Duration) bool {
 	if !s.Status.Alerting() || s.Status == s.Notified {
 		return false
 	}
-	if !s.Notified.Alerting() && s.Status == status.OK {
+	if s.NotifiedAt.IsZero() && s.Status == status.OK {
 		// first sight of a healthy check is not news
 		s.Notified = status.OK
 		return false
 	}
 	return s.NotifiedAt.IsZero() || now.Sub(s.NotifiedAt) >= minInterval
+}
+
+// StuckUnknown reports a check unknown since before cutoff that hasn't been reported as unknown.
+func (s *State) StuckUnknown(cutoff time.Time) bool {
+	reported := s.Notified == status.Unknown && !s.NotifiedAt.IsZero()
+	return s.Status == status.Unknown && s.Since.Before(cutoff) && !reported
 }
 
 func (s *State) MarkNotified(now time.Time) status.Status {

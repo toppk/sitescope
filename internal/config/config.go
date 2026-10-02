@@ -111,7 +111,9 @@ type Alerts struct {
 	To               []string `json:"to"`
 	SubjectPrefix    string   `json:"subjectPrefix"`
 	RenotifyInterval Duration `json:"renotifyInterval"`
-	DigestTime       string   `json:"digestTime"`
+	// UnknownAfter alerts on a check stuck in unknown this long; negative disables.
+	UnknownAfter Duration `json:"unknownAfter"`
+	DigestTime   string   `json:"digestTime"`
 }
 
 // Public is one rule for the public page; each check takes the first rule that matches it.
@@ -362,6 +364,9 @@ func (c *Config) applyDefaults() {
 	def(&al.SubjectPrefix, "[sitescope]")
 	if al.RenotifyInterval == 0 {
 		al.RenotifyInterval = Duration(time.Hour)
+	}
+	if al.UnknownAfter == 0 {
+		al.UnknownAfter = Duration(time.Hour)
 	}
 	if c.Domains != nil {
 		c.Domains.Days = c.Domains.Days.Or(status.Threshold{Warn: 45, Crit: 14})

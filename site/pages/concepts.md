@@ -61,8 +61,11 @@ them in one email.
   that isn't ok. A hub started after that time skips the day's digest, and
   none goes out in the first 10 minutes after a start, so a restart never
   mails a list of checks that simply haven't run yet.
-- **Unknown is quiet.** Changes to `unknown` (an agent's dependent checks
-  when the agent is down, for example) don't send email.
+- **Unknown waits.** A move to `unknown` doesn't send email at once. A
+  check still unknown after `alerts.unknownAfter` (1 hour, counted from
+  startup for a check that has never produced a result) is reported once
+  as UNKNOWN, and its recovery is reported. Checks whose agent is down stay
+  quiet; the agent's own alert covers them.
 - **Startup.** Every start sends "sitescope started on HOST - vault LOCKED,
   run sitescope unlock".
 

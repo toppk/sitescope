@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toppk/sitescope/internal/check"
 	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/status"
 )
@@ -104,11 +105,15 @@ type change struct {
 // notify emails all due state changes in one message.
 func (h *Hub) notify(now time.Time) {
 	min := h.cfg.Alerts.RenotifyInterval.D()
+	after := h.cfg.Alerts.UnknownAfter.D()
+	// a never-run check has no Since, so also wait that long after startup
+	stuckOK := after > 0 && now.Sub(h.started) >= after
 	h.mu.Lock()
 	var due []change
 	for _, c := range h.checks {
 		st := h.states[c.ID]
-		if st.Due(now, min) {
+		stuck := stuckOK && st.StuckUnknown(now.Add(-after)) && !h.dependencyDown(c)
+		if stuck || st.Due(now, min) {
 			due = append(due, change{c.ID, c.Name, st.Message, st.Notified, st.Status})
 		}
 	}
@@ -154,13 +159,22 @@ func ChangeMail(due []change) (string, string) {
 		return label(d.to) + ": " + d.name, b.String()
 	}
 	var parts []string
-	for _, s := range []status.Status{status.Crit, status.Warn, status.OK} {
+	for _, s := range []status.Status{status.Crit, status.Warn, status.Unknown, status.OK} {
 		if counts[s] > 0 {
-			n := map[status.Status]string{status.Crit: "crit", status.Warn: "warn", status.OK: "recovered"}[s]
+			n := map[status.Status]string{status.Crit: "crit", status.Warn: "warn", status.Unknown: "unknown", status.OK: "recovered"}[s]
 			parts = append(parts, fmt.Sprintf("%d %s", counts[s], n))
 		}
 	}
 	return fmt.Sprintf("%d changes: %s", len(due), strings.Join(parts, ", ")), b.String()
+}
+
+// dependencyDown is true when the check's agent isn't ok; that agent alerts instead. Caller holds h.mu.
+func (h *Hub) dependencyDown(c *check.Check) bool {
+	if c.DependsOn == "" {
+		return false
+	}
+	d := h.states[c.DependsOn]
+	return d == nil || d.Status != status.OK
 }
 
 // digestGrace keeps a digest from listing checks that haven't run since a restart.

@@ -38,7 +38,7 @@ target) can override it with the same four keys:
 | key | default | notes |
 |---|---|---|
 | `hub` | `title: "Status"`, `publicURL`, `refresh: 60`, `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | `refresh` is the page's reload interval in seconds; `concurrency` caps checks running at once |
-| `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `digestTime` | `digestTime` is `"HH:MM"`, local time; unset means no digest |
+| `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"`, `digestTime` | `digestTime` is `"HH:MM"`, local time; unset means no digest |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`; `visibility` is `public`, `grouped` (default) or `private`; first match wins; unmatched checks are public under their area's name. See [visibility](web.html#visibility). Areas are `dns mail http tls domains hosts hygiene cloud` |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`) |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | `delegation` is the expected NS names |

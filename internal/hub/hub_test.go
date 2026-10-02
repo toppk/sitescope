@@ -278,3 +278,23 @@ func TestDigestNotSentOnStartup(t *testing.T) {
 		t.Fatal("digest should go out once the grace period has passed")
 	}
 }
+
+func TestStuckUnknownAlertsButNotUnderDownAgent(t *testing.T) {
+	h := testHub(t)
+	now := time.Now()
+	h.started = now.Add(-2 * time.Hour)
+	h.states["host.alpha.agent"].Status = status.Crit
+	h.notify(now)
+	if st := h.states["domain.example.org"]; st.Notified != status.Unknown || st.NotifiedAt.IsZero() {
+		t.Error("a check unknown since startup should alert")
+	}
+	if !h.states["host.alpha.disk"].NotifiedAt.IsZero() {
+		t.Error("checks under a down agent should stay quiet")
+	}
+	h2 := testHub(t)
+	h2.started = now
+	h2.notify(now)
+	if !h2.states["domain.example.org"].NotifiedAt.IsZero() {
+		t.Error("no unknown alerts right after startup")
+	}
+}
