@@ -98,6 +98,8 @@ type Agent struct {
 	Postfix     bool   `json:"postfix"`
 	Knot        bool   `json:"knot"`
 	KnotSocket  string `json:"knotSocket"`
+	// WGPeers names peers in metric labels; hosts.wgPeers is used when this is empty.
+	WGPeers map[string]string `json:"wgPeers"`
 	// Command paths; the module fills these from nixpkgs.
 	Systemctl string `json:"systemctl"`
 	WG        string `json:"wg"`
@@ -158,7 +160,17 @@ type Hosts struct {
 	QueueAge    status.Threshold  `json:"queueAge"`
 	KnotExpiry  status.Threshold  `json:"knotExpiry"`
 	NixpkgsAge  status.Threshold  `json:"nixpkgsAge"`
-	KnotZones   []string          `json:"knotZones"`
+	// Rates are computed over RateWindow from the agents' counters.
+	RateWindow  Duration         `json:"rateWindow"`
+	CPU         status.Threshold `json:"cpu"`         // percent busy
+	MemoryStall status.Threshold `json:"memoryStall"` // percent of time some task waited on memory
+	SwapIn      status.Threshold `json:"swapIn"`      // pages per second
+	DiskBusy    status.Threshold `json:"diskBusy"`    // percent of time a device was busy
+	IOStall     status.Threshold `json:"ioStall"`     // percent of time some task waited on I/O
+	NetErrors   status.Threshold `json:"netErrors"`   // errors and drops per second
+	NetMbps     status.Threshold `json:"netMbps"`     // off unless set
+	UnitMemory  status.Threshold `json:"unitMemory"`  // percent of a service's MemoryMax
+	KnotZones   []string         `json:"knotZones"`
 }
 
 type Host struct {
@@ -416,6 +428,16 @@ func (c *Config) applyDefaults() {
 		hs.QueueAge = hs.QueueAge.Or(status.Threshold{Warn: 3600, Crit: 4 * 3600})
 		hs.KnotExpiry = hs.KnotExpiry.Or(status.Threshold{Warn: 14 * 86400, Crit: 3 * 86400})
 		hs.NixpkgsAge = hs.NixpkgsAge.Or(status.Threshold{Warn: 30, Crit: 90})
+		if hs.RateWindow == 0 {
+			hs.RateWindow = Duration(5 * time.Minute)
+		}
+		hs.CPU = hs.CPU.Or(status.Threshold{Warn: 85, Crit: 95})
+		hs.MemoryStall = hs.MemoryStall.Or(status.Threshold{Warn: 10, Crit: 30})
+		hs.SwapIn = hs.SwapIn.Or(status.Threshold{Warn: 100, Crit: 1000})
+		hs.DiskBusy = hs.DiskBusy.Or(status.Threshold{Warn: 80, Crit: 95})
+		hs.IOStall = hs.IOStall.Or(status.Threshold{Warn: 25, Crit: 50})
+		hs.NetErrors = hs.NetErrors.Or(status.Threshold{Warn: 1, Crit: 10})
+		hs.UnitMemory = hs.UnitMemory.Or(status.Threshold{Warn: 85, Crit: 95})
 	}
 }
 

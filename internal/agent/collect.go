@@ -46,6 +46,8 @@ func (c *Collector) Collect(ctx context.Context) *report.Report {
 	fail("disks", c.disks(r))
 	fail("system", c.system(r))
 	fail("units", c.failedUnits(ctx, r))
+	fail("counters", c.counters(r))
+	fail("cgroups", c.units(r))
 	fail("wireguard", c.wireguard(ctx, r))
 	if c.Cfg.Postfix {
 		fail("postfix", c.postfix(ctx, r))
@@ -94,9 +96,11 @@ func (c *Collector) memory(r *report.Report) error {
 	if err != nil {
 		return err
 	}
+	m := &r.Memory
 	fields := map[string]*uint64{
-		"MemTotal": &r.Memory.TotalKB, "MemAvailable": &r.Memory.AvailableKB,
-		"SwapTotal": &r.Memory.SwapTotalKB, "SwapFree": &r.Memory.SwapFreeKB,
+		"MemTotal": &m.TotalKB, "MemAvailable": &m.AvailableKB, "MemFree": &m.FreeKB, "Buffers": &m.BuffersKB,
+		"Cached": &m.CachedKB, "Shmem": &m.ShmemKB, "Dirty": &m.DirtyKB,
+		"SwapTotal": &m.SwapTotalKB, "SwapFree": &m.SwapFreeKB,
 	}
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	for sc.Scan() {
@@ -144,8 +148,11 @@ func (c *Collector) disks(r *report.Report) error {
 		if err := unix.Statfs(c.path(mount), &st); err != nil {
 			continue
 		}
-		d := report.Disk{Mount: mount, FSType: qf[0],
-			TotalBytes: st.Blocks * uint64(st.Bsize), AvailBytes: st.Bavail * uint64(st.Bsize)}
+		d := report.Disk{Mount: mount, FSType: qf[0], TotalBytes: st.Blocks * uint64(st.Bsize),
+			AvailBytes: st.Bavail * uint64(st.Bsize), Files: st.Files, FilesFree: st.Ffree}
+		if len(qf) > 1 {
+			d.Device = qf[1]
+		}
 		if used := st.Blocks - st.Bfree; used+st.Bavail > 0 {
 			d.UsedPct = round1(100 * float64(used) / float64(used+st.Bavail))
 		}
@@ -242,8 +249,19 @@ func (c *Collector) wireguard(ctx context.Context, r *report.Report) error {
 	if err != nil {
 		return err
 	}
-	r.WireGuard, err = ParseHandshakes(out)
-	return err
+	if r.WireGuard, err = ParseHandshakes(out); err != nil {
+		return err
+	}
+	// transfer, not dump: dump prints the interface's private key
+	out, err = run(ctx, c.Cfg.WG, "show", c.Cfg.WGInterface, "transfer")
+	if err != nil {
+		return err
+	}
+	tr := ParseTransfer(out)
+	for i, p := range r.WireGuard {
+		r.WireGuard[i].RxBytes, r.WireGuard[i].TxBytes = tr[p.PublicKey][0], tr[p.PublicKey][1]
+	}
+	return nil
 }
 
 func ParseHandshakes(out []byte) ([]report.WGPeer, error) {
@@ -273,7 +291,7 @@ func (c *Collector) postfix(ctx context.Context, r *report.Report) error {
 
 // ParsePostqueue reads `postqueue -j` output (one JSON object per message).
 func ParsePostqueue(out []byte, now time.Time) (*report.Postfix, error) {
-	p := &report.Postfix{}
+	p := &report.Postfix{Queues: map[string]int{}}
 	oldest := int64(0)
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -283,12 +301,14 @@ func ParsePostqueue(out []byte, now time.Time) (*report.Postfix, error) {
 			continue
 		}
 		var m struct {
-			ArrivalTime int64 `json:"arrival_time"`
+			Queue       string `json:"queue_name"`
+			ArrivalTime int64  `json:"arrival_time"`
 		}
 		if err := json.Unmarshal(line, &m); err != nil {
 			return nil, fmt.Errorf("postqueue: %w", err)
 		}
 		p.Messages++
+		p.Queues[m.Queue]++
 		if oldest == 0 || m.ArrivalTime < oldest {
 			oldest = m.ArrivalTime
 		}

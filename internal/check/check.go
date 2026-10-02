@@ -69,10 +69,11 @@ func (e *Env) now() time.Time {
 	return time.Now()
 }
 
-// Reports caches the latest agent report per host for the derived host checks.
+// Reports caches recent agent reports per host: the latest for the host checks,
+// and a few minutes of history so counters can become rates.
 type Reports struct {
 	mu sync.Mutex
-	m  map[string]reportEntry
+	m  map[string][]reportEntry
 }
 
 type reportEntry struct {
@@ -80,20 +81,64 @@ type reportEntry struct {
 	at time.Time
 }
 
+// keepReports bounds the history; it must exceed the longest rate window.
+const keepReports = 20 * time.Minute
+
 func (r *Reports) Put(host string, rep *report.Report, at time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.m == nil {
-		r.m = map[string]reportEntry{}
+		r.m = map[string][]reportEntry{}
 	}
-	r.m[host] = reportEntry{rep, at}
+	h := r.m[host]
+	// a reboot resets every counter, so older reports can't be compared
+	if n := len(h); n > 0 && bootTime(h[n-1].r) != bootTime(rep) {
+		h = nil
+	}
+	if n := len(h); n > 0 && h[n-1].r.Time.Equal(rep.Time) {
+		h = h[:n-1]
+	}
+	h = append(h, reportEntry{rep, at})
+	for len(h) > 1 && at.Sub(h[0].at) > keepReports {
+		h = h[1:]
+	}
+	r.m[host] = h
+}
+
+func bootTime(r *report.Report) int64 {
+	if r.Counters == nil {
+		return 0
+	}
+	return r.Counters.BootTime
 }
 
 func (r *Reports) Get(host string) (*report.Report, time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	e := r.m[host]
+	h := r.m[host]
+	if len(h) == 0 {
+		return nil, time.Time{}
+	}
+	e := h[len(h)-1]
 	return e.r, e.at
+}
+
+// Window returns the newest report and the newest one at least d older, or the oldest kept.
+func (r *Reports) Window(host string, d time.Duration) (old, cur *report.Report) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	h := r.m[host]
+	if len(h) == 0 {
+		return nil, nil
+	}
+	cur = h[len(h)-1].r
+	old = h[0].r
+	for _, e := range h {
+		if cur.Time.Sub(e.r.Time) >= d {
+			old = e.r
+		}
+	}
+	return old, cur
 }
 
 const userAgent = "sitescope/1"

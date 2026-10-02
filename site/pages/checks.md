@@ -70,11 +70,21 @@ unknown.
 | id | checks | default |
 |---|---|---|
 | `host.HOST.disk` | used space and inodes, worst real filesystem | `{80, 90}` % |
-| `host.HOST.memory` | memory in use (total minus available) | `{90, 97}` % |
+| `host.HOST.memory` | memory in use: total minus `MemAvailable`, so reclaimable page cache doesn't count. The message shows the cache and the three largest services | `{90, 97}` % |
+| `host.HOST.pressure` | what a memory shortage costs: share of time tasks stalled waiting for memory (PSI), swap-in pages/s, and OOM kills (any is crit) | stall `{10, 30}` %, swap-in `{100, 1000}`/s |
+| `host.HOST.cpu` | CPU busy (not idle or iowait), with iowait, steal and CPU pressure in the message | `{85, 95}` % |
+| `host.HOST.diskio` | each disk's busy time, read and write throughput, and the share of time tasks stalled on I/O | busy `{80, 95}` %, stall `{25, 50}` % |
+| `host.HOST.network` | per interface throughput; errors and drops per second | errors `{1, 10}`/s, `netMbps` off |
+| `host.HOST.cgroups` | each service with a MemoryMax: memory in use as a share of it | `{85, 95}` % |
 | `host.HOST.swap` | swap in use | `{60, 90}` % |
 | `host.HOST.load` | 5-minute load per CPU | `{2, 4}` |
 | `host.HOST.units` | failed systemd units: any is warn | |
 | `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers` | `{600, 3600}` s |
+
+CPU, memory pressure, disk I/O and network are rates over `rateWindow`
+(5 minutes) from the agent's counters, so a brief spike doesn't alert but
+a sustained one does. For the first two minutes after the hub or the host
+starts they report "collecting a baseline".
 
 A WireGuard peer that only carries occasional traffic may go minutes
 without a handshake. Set `PersistentKeepalive` on it, raise the

@@ -137,7 +137,12 @@ func runAgent(args []string) error {
 	}
 	ctx, cancel := signalContext()
 	defer cancel()
-	s := &agent.Server{Collector: &agent.Collector{Cfg: cfg.Agent}, Token: os.Getenv("SITESCOPE_AGENT_TOKEN")}
+	peers := cfg.Agent.WGPeers
+	if len(peers) == 0 && cfg.Hosts != nil {
+		peers = cfg.Hosts.WGPeers
+	}
+	s := &agent.Server{Collector: &agent.Collector{Cfg: cfg.Agent}, Token: os.Getenv("SITESCOPE_AGENT_TOKEN"),
+		Version: version, Peers: peers}
 	return agent.Run(ctx, cfg.Agent.Listen, s)
 }
 

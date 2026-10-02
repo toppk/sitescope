@@ -427,3 +427,74 @@ func TestSMTPProbes(t *testing.T) {
 }
 
 func mustAddr(s string) netip.Addr { return netip.MustParseAddr(s) }
+
+func counterReport(at time.Time, boot int64, cpuBusy, cpuIdle float64, psiUS, oom, swapIn, ioMS, rx uint64) *report.Report {
+	return &report.Report{Time: at, Counters: &report.Counters{
+		BootTime: boot,
+		CPU:      []report.CPU{{User: cpuBusy, Idle: cpuIdle}},
+		Pressure: map[string]report.PSI{"memory": {SomeTotalUS: psiUS}, "io": {SomeTotalUS: psiUS / 2}, "cpu": {}},
+		VM:       report.VMStat{OOMKill: oom, PswpIn: swapIn},
+		Disks:    []report.DiskIO{{Device: "sda", IOTimeMS: ioMS, WrittenBytes: rx}},
+		Net:      []report.NetIO{{Device: "eth0", RxBytes: rx}},
+	}}
+}
+
+func TestRates(t *testing.T) {
+	t0 := time.Unix(1790000000, 0)
+	a := counterReport(t0, 1, 100, 900, 0, 0, 0, 0, 0)
+	// 300s later: 270 of 300 CPU-seconds busy, memory stalled 60s, 3000 pages swapped in, disk busy 150s
+	b := counterReport(t0.Add(5*time.Minute), 1, 370, 930, 60e6, 0, 3000, 150000, 3e8)
+	r, err := ComputeRates(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.CPUBusy != 90 || r.PSISome["memory"] != 20 || r.SwapIn != 10 || r.Disks[0].BusyPct != 50 || r.Net[0].RxBps != 1e6 {
+		t.Fatalf("rates = %+v", r)
+	}
+	if got := EvalCPU(r, Threshold{Warn: 85, Crit: 95}); got.Status != Warn || !strings.Contains(got.Message, "90% busy over 5m") {
+		t.Errorf("cpu = %+v", got)
+	}
+	if got := EvalMemPressure(r, Threshold{Warn: 10, Crit: 30}, Threshold{Warn: 100, Crit: 1000}); got.Status != Warn {
+		t.Errorf("memory pressure = %+v", got)
+	}
+	b.Counters.VM.OOMKill = 2
+	r, _ = ComputeRates(a, b)
+	if got := EvalMemPressure(r, Threshold{Warn: 10, Crit: 30}, Threshold{}); got.Status != Crit || !strings.HasPrefix(got.Message, "2 OOM kill") {
+		t.Errorf("OOM kills are critical: %+v", got)
+	}
+	if got := EvalDiskIO(r, Threshold{Warn: 80, Crit: 95}, Threshold{Warn: 25, Crit: 50}); got.Status != OK {
+		t.Errorf("disk io = %+v", got)
+	}
+	if got := EvalNetwork(r, Threshold{Warn: 1, Crit: 10}, Threshold{}); got.Status != OK || !strings.Contains(got.Message, "eth0 in 8.00") {
+		t.Errorf("network = %+v", got)
+	}
+	if _, err := ComputeRates(&report.Report{Time: t0}, b); err == nil {
+		t.Error("reports without counters can't give rates")
+	}
+}
+
+func TestReportsWindow(t *testing.T) {
+	var rs Reports
+	t0 := time.Unix(1790000000, 0)
+	for i := range 12 {
+		at := t0.Add(time.Duration(i) * time.Minute)
+		rs.Put("a", counterReport(at, 1, 0, 0, 0, 0, 0, 0, 0), at)
+	}
+	old, cur := rs.Window("a", 5*time.Minute)
+	if cur.Time.Sub(old.Time) != 5*time.Minute {
+		t.Errorf("window = %s", cur.Time.Sub(old.Time))
+	}
+	at := t0.Add(12 * time.Minute)
+	rs.Put("a", counterReport(at, 2, 0, 0, 0, 0, 0, 0, 0), at)
+	if old, cur := rs.Window("a", 5*time.Minute); old != cur {
+		t.Error("a reboot starts the history over")
+	}
+	u := &report.Report{Units: []report.UnitMem{{Unit: "sitescope.service", Bytes: 60 << 20, MaxBytes: 64 << 20}, {Unit: "knot.service", Bytes: 80 << 20}}}
+	if got := EvalUnitMemory(u, Threshold{Warn: 85, Crit: 95}); got.Status != Warn || !strings.Contains(got.Message, "sitescope 60 MiB of 64 MiB") {
+		t.Errorf("unit memory = %+v", got)
+	}
+	m := &report.Report{Memory: report.Memory{TotalKB: 1000000, AvailableKB: 400000, CachedKB: 200000}, Units: u.Units}
+	if got := EvalMemory(m, Threshold{Warn: 90, Crit: 97}); !strings.Contains(got.Message, "largest: knot 80 MiB, sitescope 60 MiB") {
+		t.Errorf("memory = %+v", got)
+	}
+}

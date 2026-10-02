@@ -8,7 +8,10 @@ SiteScope. One static Go binary:
 - `sitescope agent` runs on every host and serves `GET /v1/report` (JSON,
   bearer token) on its wg0 address: disk, memory, swap, load, uptime, failed
   units, booted vs current generation, nixpkgs date, WireGuard handshakes,
-  postfix queue, Knot zone status.
+  postfix queue, Knot zone status, and counters for CPU, pressure (PSI),
+  vmstat, disk and network I/O and per-service cgroup memory. The same data
+  is at `GET /metrics` in Prometheus text format, with node_exporter's names
+  where they overlap.
 - `sitescope hub` runs on one host. It polls the agents, runs the external probes,
   keeps 30+ days of history in `/var/lib/sitescope/history.db` (bbolt), emails
   state changes and a daily digest, pings a dead-man's-switch URL, and serves
@@ -30,7 +33,7 @@ JSON config that the NixOS module renders from `services.sitescope.settings`.
 | http (`http.`) | status code and latency | 1m |
 | mail (`mail.`) | SMTP banner per address; daily open-relay probe expecting 554; DNS blocklists through the local unbound | 5m / 24h / 1h |
 | mail (`host.*.postfix`) | queue size and oldest message age | with agent poll |
-| hosts (`host.`) | agent reachable, disk, memory, swap, load per CPU, failed units, WireGuard handshake age | 1m |
+| hosts (`host.`) | agent reachable, disk, memory (cache excluded), swap, load per CPU, failed units, WireGuard handshake age; 5-minute rates of CPU, memory pressure (PSI stalls, swap-in, OOM kills), disk I/O, network; services against their MemoryMax | 1m |
 | hygiene (`host.*.reboot`, `.nixpkgs`) | kernel/initrd changed since boot; nixpkgs age (warn 30 days) | with agent poll |
 | cloud (`linode.`, `cloudflare.`) | Linode balance / payment due, accrued charges, transfer, maintenance and notices, notable events, instance status; Cloudflare records vs. expected set | 1h, needs vault |
 
@@ -186,7 +189,7 @@ Reference (all optional; defaults shown):
 | `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (negative disables), `digestTime` (`"HH:MM"`, local time) | |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
-| `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`) | thresholds are `{warn, crit}`, 0 disables a bound |
+| `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`, 0 disables a bound |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | .us and .co, missing from the IANA file, have built-in fallbacks |
 | `tls` | `targets: [{name, host, port, starttls: ""\|"smtp", families: ["4","6"]}]`, `days {20,7}` | |

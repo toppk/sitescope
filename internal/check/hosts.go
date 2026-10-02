@@ -42,6 +42,15 @@ func (b *builder) hosts() {
 		d("swap", "swap", "hosts", "memory", func(r *report.Report, _ time.Time) Result { return EvalSwap(r, hs.Swap) })
 		d("load", "load average", "hosts", "load", func(r *report.Report, _ time.Time) Result { return EvalLoad(r, hs.Load) })
 		d("units", "failed systemd units", "hosts", "units", func(r *report.Report, _ time.Time) Result { return EvalUnits(r) })
+		d("cgroups", "unit memory", "hosts", "cgroups", func(r *report.Report, _ time.Time) Result { return EvalUnitMemory(r, hs.UnitMemory) })
+		w := func(id, name string, eval func(Rates) Result) {
+			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: "hosts", Group: h.Name,
+				DependsOn: agentID, Run: fromWindow(h.Name, stale, hs.RateWindow.D(), eval)})
+		}
+		w("cpu", "CPU", func(r Rates) Result { return EvalCPU(r, hs.CPU) })
+		w("pressure", "memory pressure", func(r Rates) Result { return EvalMemPressure(r, hs.MemoryStall, hs.SwapIn) })
+		w("diskio", "disk I/O", func(r Rates) Result { return EvalDiskIO(r, hs.DiskBusy, hs.IOStall) })
+		w("network", "network", func(r Rates) Result { return EvalNetwork(r, hs.NetErrors, hs.NetMbps) })
 		d("wireguard", "WireGuard handshakes", "hosts", "wireguard", func(r *report.Report, now time.Time) Result {
 			return EvalWireGuard(r, now, hs.WGHandshake, hs.WGPeers, h.WGIgnore)
 		})
@@ -87,6 +96,31 @@ func agentCheck(h config.Host) func(context.Context, *Env) Result {
 	}
 }
 
+// fromWindow rates the counters between the latest report and one a window earlier.
+func fromWindow(host string, stale, window time.Duration, eval func(Rates) Result) func(context.Context, *Env) Result {
+	return func(_ context.Context, env *Env) Result {
+		cur, at := env.Reports.Get(host)
+		if cur == nil {
+			return Unknownf("no report from agent yet")
+		}
+		if age := env.now().Sub(at); age > stale {
+			return Unknownf("last report %s ago", fmtDuration(age))
+		}
+		if e := cur.Errors["counters"]; e != "" {
+			return Warnf("agent could not collect counters: %s", e)
+		}
+		old, cur := env.Reports.Window(host, window)
+		if span := cur.Time.Sub(old.Time); span < min(window, 2*time.Minute) {
+			return Unknownf("collecting a baseline (%s of %s)", fmtDuration(span), fmtDuration(window))
+		}
+		r, err := ComputeRates(old, cur)
+		if err != nil {
+			return Unknownf("%v", err)
+		}
+		return eval(r)
+	}
+}
+
 func fromReport(host, section string, stale time.Duration, eval func(*report.Report, time.Time) Result) func(context.Context, *Env) Result {
 	return func(_ context.Context, env *Env) Result {
 		r, at := env.Reports.Get(host)
@@ -126,7 +160,12 @@ func EvalMemory(r *report.Report, t Threshold) Result {
 		return Unknownf("no memory info")
 	}
 	used := 100 * (1 - float64(m.AvailableKB)/float64(m.TotalKB))
-	return Rated(t.Above(used), "%.0f%% used of %d MB", used, m.TotalKB/1024)
+	msg := fmt.Sprintf("%.0f%% used: %s available of %s (page cache %s, not counted)", used,
+		fmtBytes(float64(m.AvailableKB)*1024), fmtBytes(float64(m.TotalKB)*1024), fmtBytes(float64(m.CachedKB+m.BuffersKB)*1024))
+	if len(r.Units) > 0 {
+		msg += "; largest: " + topUnits(r, 3)
+	}
+	return Rated(t.Above(used), "%s", msg)
 }
 
 func EvalSwap(r *report.Report, t Threshold) Result {

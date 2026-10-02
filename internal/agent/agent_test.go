@@ -6,10 +6,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/toppk/sitescope/internal/config"
+	"github.com/toppk/sitescope/internal/report"
 )
 
 func TestParsers(t *testing.T) {
@@ -62,6 +66,19 @@ func fakeRoot(t *testing.T) string {
 	write(t, root, "/proc/self/mountinfo", "22 1 8:0 / / rw - ext4 /dev/sda rw\n"+
 		"30 22 8:0 /tmp/systemd-private-x /tmp rw - ext4 /dev/sda rw\n"+
 		"31 22 0:5 / /run rw - tmpfs tmpfs rw\n")
+	write(t, root, "/proc/stat", "cpu  200 0 100 9600 50 0 10 40 0 0\ncpu0 200 0 100 9600 50 0 10 40 0 0\nintr 1\nbtime 1790000000\n")
+	write(t, root, "/proc/vmstat", "nr_free_pages 1\npgmajfault 77\npswpin 5\npswpout 6\noom_kill 1\n")
+	write(t, root, "/proc/diskstats", "   8       0 sda 100 0 2048 0 50 0 4096 0 0 1500 0 0 0 0 0 0 0\n"+
+		"   8       1 sda1 1 0 8 0 1 0 8 0 0 1 0 0 0 0 0 0 0\n   7       0 loop0 1 0 8 0 0 0 0 0 0 1 0 0 0 0 0 0 0\n")
+	write(t, root, "/proc/net/dev", "Inter-|   Receive |  Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n"+
+		"    lo: 9 1 0 0 0 0 0 0 9 1 0 0 0 0 0 0\n  eth0: 1000 10 1 2 0 0 0 0 2000 20 3 4 0 0 0 0\n   wg0: 500 5 0 0 0 0 0 0 600 6 0 0 0 0 0 0\n")
+	for _, res := range []string{"cpu", "memory", "io"} {
+		write(t, root, "/proc/pressure/"+res, "some avg10=0.00 avg60=1.50 avg300=0.00 total=2000000\nfull avg10=0.00 avg60=0.50 avg300=0.00 total=1000000\n")
+	}
+	write(t, root, "/sys/fs/cgroup/system.slice/sitescope.service/memory.current", "20971520\n")
+	write(t, root, "/sys/fs/cgroup/system.slice/sitescope.service/memory.max", "67108864\n")
+	write(t, root, "/sys/fs/cgroup/system.slice/knot.service/memory.current", "83886080\n")
+	write(t, root, "/sys/fs/cgroup/system.slice/knot.service/memory.max", "max\n")
 	gen := func(name, kernel string) {
 		write(t, root, "/nix/store/"+name+"/nixos-version", "26.05.20260920.78e9c78 (Yarara)\n")
 		os.Symlink(filepath.Join(root, "/nix/store", kernel), filepath.Join(root, "/nix/store", name, "kernel"))
@@ -116,5 +133,121 @@ func TestServerAuth(t *testing.T) {
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/other", nil))
 	if w.Code != http.StatusNotFound {
 		t.Error("unknown path")
+	}
+}
+
+func TestCounters(t *testing.T) {
+	c := &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false"}}
+	r := c.Collect(context.Background())
+	k := r.Counters
+	if k == nil || r.Errors["counters"] != "" {
+		t.Fatalf("counters: %v", r.Errors)
+	}
+	if len(k.CPU) != 1 || k.CPU[0].Idle != 96 || k.CPU[0].Steal != 0.4 || k.BootTime != 1790000000 {
+		t.Errorf("cpu = %+v boot %d", k.CPU, k.BootTime)
+	}
+	if k.VM.OOMKill != 1 || k.VM.PswpIn != 5 || k.VM.PgMajFault != 77 {
+		t.Errorf("vmstat = %+v", k.VM)
+	}
+	if len(k.Disks) != 1 || k.Disks[0].Device != "sda" || k.Disks[0].ReadBytes != 2048*512 || k.Disks[0].IOTimeMS != 1500 {
+		t.Errorf("disks (partitions and loop skipped) = %+v", k.Disks)
+	}
+	if len(k.Net) != 2 || k.Net[0].Device != "eth0" || k.Net[0].TxDrop != 4 {
+		t.Errorf("net (lo skipped) = %+v", k.Net)
+	}
+	if p := k.Pressure["memory"]; p.SomeTotalUS != 2000000 || p.FullAvg60 != 0.5 {
+		t.Errorf("psi = %+v", p)
+	}
+	if len(r.Units) != 2 {
+		t.Fatalf("units = %+v", r.Units)
+	}
+	for _, u := range r.Units {
+		if u.Unit == "knot.service" && u.MaxBytes != 0 || u.Unit == "sitescope.service" && u.MaxBytes != 64<<20 {
+			t.Errorf("unit %+v", u)
+		}
+	}
+	tr := ParseTransfer([]byte("AAA=\t100\t200\nBBB=\t0\t0\n"))
+	if tr["AAA="] != [2]uint64{100, 200} {
+		t.Errorf("transfer = %v", tr)
+	}
+}
+
+var (
+	promSample = regexp.MustCompile(`^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[a-zA-Z_][a-zA-Z0-9_]*="(?:[^"\\]|\\.)*"(?:,[a-zA-Z_][a-zA-Z0-9_]*="(?:[^"\\]|\\.)*")*\})? (\S+)$`)
+	promType   = regexp.MustCompile(`^# TYPE ([a-zA-Z_:][a-zA-Z0-9_:]*) (counter|gauge|untyped|summary|histogram)$`)
+)
+
+// validProm checks text format 0.0.4: one TYPE per family before its samples, samples
+// grouped by family, valid names, labels and values, and no duplicate series.
+func validProm(t *testing.T, text string) map[string]int {
+	t.Helper()
+	families := map[string]int{}
+	series := map[string]bool{}
+	current, done := "", map[string]bool{}
+	for i, l := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(l, "# HELP "):
+		case strings.HasPrefix(l, "# TYPE "):
+			m := promType.FindStringSubmatch(l)
+			if m == nil || done[m[1]] {
+				t.Fatalf("line %d: bad or repeated TYPE: %q", i+1, l)
+			}
+			if current != "" {
+				done[current] = true
+			}
+			current = m[1]
+		default:
+			m := promSample.FindStringSubmatch(l)
+			if m == nil {
+				t.Fatalf("line %d: bad sample: %q", i+1, l)
+			}
+			if m[1] != current {
+				t.Fatalf("line %d: sample %s outside its family %s", i+1, m[1], current)
+			}
+			if _, err := strconv.ParseFloat(m[3], 64); err != nil {
+				t.Fatalf("line %d: bad value %q", i+1, m[3])
+			}
+			if series[m[1]+m[2]] {
+				t.Fatalf("line %d: duplicate series %s%s", i+1, m[1], m[2])
+			}
+			series[m[1]+m[2]] = true
+			families[m[1]]++
+		}
+	}
+	return families
+}
+
+func TestMetrics(t *testing.T) {
+	c := &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false"}}
+	r := c.Collect(context.Background())
+	r.WireGuard = []report.WGPeer{{PublicKey: "KEY1=", LatestHandshake: 1790000000, RxBytes: 5}, {PublicKey: "KEY2="}}
+	r.Postfix = &report.Postfix{Messages: 3, Queues: map[string]int{"deferred": 2, "active": 1}, OldestAgeSec: 60}
+	var b strings.Builder
+	WriteMetrics(&b, r, map[string]string{"KEY1=": "se2"}, map[string]uint64{"units": 2}, "abc123", time.Unix(1790003600, 0))
+	out := b.String()
+	fams := validProm(t, out)
+	for _, want := range []string{"node_cpu_seconds_total", "node_memory_MemAvailable_bytes", "node_filesystem_avail_bytes",
+		"node_disk_io_time_seconds_total", "node_network_receive_bytes_total", "node_pressure_memory_stalled_seconds_total",
+		"node_vmstat_oom_kill", "sitescope_systemd_unit_memory_max_bytes", "sitescope_postfix_queue_messages",
+		"sitescope_wireguard_latest_handshake_seconds", "sitescope_agent_collect_errors_total", "sitescope_agent_build_info"} {
+		if fams[want] == 0 {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if fams["node_cpu_seconds_total"] != 8 || fams["sitescope_systemd_unit_memory_max_bytes"] != 1 {
+		t.Errorf("series counts: %v", fams)
+	}
+	for _, want := range []string{`node_cpu_seconds_total{cpu="0",mode="steal"} 0.4`, `peer="se2"`, `peer="unnamed1"`,
+		`node_filesystem_avail_bytes{device="/dev/sda",fstype="ext4",mountpoint="/"}`, `queue="deferred"} 2`,
+		`node_memory_MemAvailable_bytes 4.096e+08`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("metrics lack %s", want)
+		}
+	}
+	if strings.Contains(out, "KEY1") || strings.Contains(out, "host=") {
+		t.Error("no keys or host labels in metrics")
+	}
+	if len(out) > 50<<10 {
+		t.Errorf("metrics are %d bytes", len(out))
 	}
 }
