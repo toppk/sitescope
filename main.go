@@ -27,7 +27,7 @@ import (
 	"github.com/toppk/sitescope/internal/vault"
 )
 
-var version = "dev"
+var version = "1.1.0+dev"
 
 const usage = `usage: sitescope <command> [flags]
 
@@ -121,6 +121,7 @@ func runHub(args []string) error {
 	if err := secmem.HardenProcess(); err != nil {
 		return fmt.Errorf("harden: %w", err)
 	}
+	hub.Version = version
 	h, err := hub.New(cfg)
 	if err != nil {
 		return err

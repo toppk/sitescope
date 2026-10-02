@@ -44,6 +44,9 @@ type Hub struct {
 	storeErr atomic.Bool
 }
 
+// Version is shown in the page footer and /status.json; main sets it from the build.
+var Version = "dev"
+
 func New(cfg *config.Config) (*Hub, error) {
 	checks, err := check.Build(cfg)
 	if err != nil {

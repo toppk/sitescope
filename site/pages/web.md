@@ -22,8 +22,8 @@ front of it.
     JavaScript. With it, the sun button switches light and dark (otherwise
     the system setting applies), and expanded sections stay expanded across
     reloads. It uses the documentation site's palette on system fonts and
-    loads nothing from third parties. The footer links to the documentation
-    (`hub.docsURL`).
+    loads nothing from third parties. The Docs link in the header goes to
+    `hub.docsURL`; the footer shows sitescope's version.
 
 `/status.json`
 :   The public page as JSON, with exactly the same facts: overall status,
@@ -31,6 +31,7 @@ front of it.
 
     ```json
     {
+      "version": "1.1.0+5c6dc53",
       "time": "2026-10-01T12:00:00Z",
       "overall": "crit",
       "vaultLocked": false,

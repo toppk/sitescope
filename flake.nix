@@ -11,7 +11,7 @@
     in
     {
       packages.${system}.default = pkgs.callPackage ./nix/package.nix {
-        version = self.shortRev or self.dirtyShortRev or "dev";
+        version = "1.1.0+${self.shortRev or self.dirtyShortRev or "dev"}";
       };
 
       nixosModules.default = import ./nix/module.nix self;

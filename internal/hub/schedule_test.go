@@ -49,7 +49,7 @@ func TestPhasesAndPlan(t *testing.T) {
 	boot := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	g := grid{boot: boot, tick: time.Minute}
 	states := map[string]*alert.State{
-		"ct.b":  {Status: status.OK, LastRun: boot.Add(-time.Hour)},      // ran an hour ago: resumes a day after
+		"ct.b":  {Status: status.OK, LastRun: boot.Add(-time.Hour)},       // ran an hour ago: resumes a day after
 		"tls.z": {Status: status.Locked, LastRun: boot.Add(-time.Minute)}, // locked: runs on its phase
 	}
 	an := plan(checks, states, g)

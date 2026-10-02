@@ -83,4 +83,5 @@ warn  tls.mx.example.org.smtp.25.v4      212ms  certificate expires 2026-10-15 (
 ## Other
 
 `sitescope version`
-:   Prints the version (the flake's git revision).
+:   Prints the version: the release plus the flake's git revision, e.g.
+    `1.1.0+5c6dc53`. The page footer and `/status.json` show it too.

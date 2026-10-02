@@ -301,11 +301,12 @@ func (h *Hub) public(w http.ResponseWriter, _ *http.Request) {
 func (h *Hub) statusJSON(w http.ResponseWriter, _ *http.Request) {
 	ls := h.lights(h.rows())
 	out := struct {
+		Version  string        `json:"version"`
 		Time     time.Time     `json:"time"`
 		Overall  status.Status `json:"overall"`
 		Locked   bool          `json:"vaultLocked"`
 		Services []apiService  `json:"services"`
-	}{Time: time.Now().UTC(), Overall: overall(ls), Locked: !h.vault.Unlocked(), Services: services(ls)}
+	}{Version: Version, Time: time.Now().UTC(), Overall: overall(ls), Locked: !h.vault.Unlocked(), Services: services(ls)}
 	writeJSON(w, out)
 }
 
@@ -418,13 +419,14 @@ type apiCheck struct {
 func (h *Hub) apiStatus(w http.ResponseWriter, _ *http.Request) {
 	rows := h.rows()
 	out := struct {
+		Version  string        `json:"version"`
 		Time     time.Time     `json:"time"`
 		Overall  status.Status `json:"overall"`
 		Public   status.Status `json:"publicOverall"`
 		Locked   bool          `json:"vaultLocked"`
 		Services []apiService  `json:"services"`
 		Checks   []apiCheck    `json:"checks"`
-	}{Time: time.Now().UTC(), Locked: !h.vault.Unlocked(), Overall: overallAll(rows)}
+	}{Version: Version, Time: time.Now().UTC(), Locked: !h.vault.Unlocked(), Overall: overallAll(rows)}
 	ls := h.lights(rows)
 	out.Public = overall(ls)
 	out.Services = services(ls)
@@ -450,6 +452,7 @@ type apiItem struct {
 func (h *Hub) render(w http.ResponseWriter, name string, data map[string]any) {
 	data["Title"] = h.cfg.Hub.Title
 	data["Docs"] = h.cfg.Hub.DocsURL
+	data["Version"] = Version
 	data["Refresh"] = h.cfg.Hub.Refresh
 	data["Now"] = time.Now().UTC().Format("2006-01-02 15:04 UTC")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

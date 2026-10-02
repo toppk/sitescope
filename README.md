@@ -111,7 +111,8 @@ Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`).
   (not shown, not counted). `public` is an ordered list of rules matched by
   area or check id glob; first match wins, and unmatched checks are public
   under their area's name (so with no rules everything is listed). Messages, hostnames,
-  addresses and versions are never shown.
+  addresses and host software versions are never shown; the footer shows
+  sitescope's own version.
 - `/detail`, `/detail/check?id=…`, `/api/status`: HTTP basic auth, user
   `admin`, password checked against the bcrypt hash in the vault. Read-only.
   Each check has its last message, retries, 30-day strip and history.

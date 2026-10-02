@@ -68,7 +68,7 @@ var templates = template.Must(template.New("").Funcs(funcs).Parse(`
 <main>{{end}}
 
 {{define "foot"}}</main>
-<footer><span>sitescope</span>{{if .Docs}}<a href="{{.Docs}}">Documentation</a>{{end}}<span>Updated {{.Now}}</span>{{if .Refresh}}<span>refreshes every {{.Refresh}}s</span>{{end}}</footer>
+<footer><span>sitescope {{.Version}}</span><span>Updated {{.Now}}</span>{{if .Refresh}}<span>refreshes every {{.Refresh}}s</span>{{end}}</footer>
 </body></html>{{end}}
 
 {{define "overall"}}<section class="card overall {{.Overall}}"><span class="dot big"></span><div>
