@@ -32,9 +32,6 @@ func (c CTIssuance) issuer() string {
 	return c.Issuer.Name
 }
 
-// ctSpacing staggers the domains' first runs: Cert Spotter allows 10 requests an hour without a key.
-const ctSpacing = 6 * time.Minute
-
 type ctAPI struct {
 	base, secret string
 }

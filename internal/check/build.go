@@ -195,13 +195,13 @@ func (b *builder) ct() {
 	if c == nil {
 		return
 	}
-	t := c.Timing.Merge(config.Timing{Interval: config.Duration(6 * time.Hour), Timeout: config.Duration(30 * time.Second),
+	// Cert Spotter allows 10 requests an hour without a key, so the domains share a day
+	t := c.Timing.Merge(config.Timing{Interval: config.Duration(24 * time.Hour), Timeout: config.Duration(30 * time.Second),
 		RetryInterval: config.Duration(10 * time.Minute)})
 	api := &ctAPI{base: strings.TrimSuffix(c.API, "/"), secret: c.TokenSecret}
-	for i, d := range c.Domains {
+	for _, d := range c.Domains {
 		d = fqdn(d)
-		b.add(t, &Check{ID: "ct." + d, Name: "CT log certificates for " + d, Area: "tls", Group: "CT logs",
-			Offset: time.Duration(i) * ctSpacing,
+		b.add(t, &Check{ID: "ct." + d, Name: "CT log certificates for " + d, Area: "tls", Group: "CT logs", Spread: "certspotter",
 			Probes: []Probe{urlProbe(c.API, "HTTPS GET currently valid certificates for the domain and its subdomains")},
 			Run:    ctCheck(api, d, c)})
 	}

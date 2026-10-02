@@ -41,8 +41,8 @@ type Check struct {
 	Secret string
 	// DependsOn names the check whose result this one reads (an agent poll).
 	DependsOn string
-	// Offset delays the first run, to spread checks that share an API's rate limit.
-	Offset time.Duration
+	// Spread names checks that share a rate-limited API; the scheduler spaces them evenly over their interval.
+	Spread string
 	// Group is the host or target the check is about, for display; "" stands alone.
 	Group  string
 	Probes []Probe

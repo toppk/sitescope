@@ -571,7 +571,7 @@ func TestCTRateLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	checks, err := Build(c)
-	if err != nil || len(checks) != 2 || checks[1].Offset != ctSpacing {
+	if err != nil || len(checks) != 2 || checks[1].Spread != "certspotter" || checks[1].Interval != 24*time.Hour {
 		t.Errorf("CT checks are staggered: %v %+v", err, checks)
 	}
 }

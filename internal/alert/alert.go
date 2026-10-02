@@ -60,7 +60,8 @@ func (s *State) Due(now time.Time, minInterval time.Duration) bool {
 // StuckUnknown reports a check unknown since before cutoff that hasn't been reported as unknown.
 func (s *State) StuckUnknown(cutoff time.Time) bool {
 	reported := s.Notified == status.Unknown && !s.NotifiedAt.IsZero()
-	return s.Status == status.Unknown && s.Since.Before(cutoff) && !reported
+	// a check waiting for its first scheduled run isn't stuck
+	return s.Status == status.Unknown && !s.LastRun.IsZero() && s.Since.Before(cutoff) && !reported
 }
 
 func (s *State) MarkNotified(now time.Time) status.Status {

@@ -40,7 +40,7 @@ Per target, with the default intervals:
 | resolution | A and AAAA on the public resolver | 5m | 576 per name |
 | domain expiry | one HTTPS GET to the registry's RDAP server; the IANA bootstrap file once a day | 12h | 2 per domain |
 | certificates | one TLS handshake, or EHLO and STARTTLS on SMTP | 6h | 4 per name and family |
-| CT logs | one HTTPS GET to api.certspotter.com per domain, first runs 6 minutes apart | 6h | 4 per domain |
+| CT logs | one HTTPS GET to api.certspotter.com per domain, domains spread evenly over the day | 24h | 1 per domain |
 | HTTP | one GET, redirects not followed | 1m | 1440 per URL |
 | SMTP banner | connect, read the 220 line, QUIT | 5m | 288 per address |
 | open relay | EHLO, MAIL FROM, RCPT TO an outside address, QUIT | 24h | 1 per address |
@@ -49,18 +49,17 @@ Per target, with the default intervals:
 | Cloudflare | HTTPS GET of the zone's records | 1h | 24 |
 
 Every interval can be changed per section; see
-[Configuration](configuration.html). A start spreads the first round over
-30 seconds, but a check that ran within its interval before the restart
-waits for its turn, so restarting the hub doesn't repeat the hourly and
-daily probes. A rate-limited API's `Retry-After` brings the next run
-forward.
+[Configuration](configuration.html). Each check runs at a fixed phase
+within its interval (see [scheduling](concepts.html#scheduling)), so
+targets see an even rate rather than bursts, and restarting the hub
+doesn't repeat the hourly and daily probes.
 
 ## When something fails
 
 A check that fails reruns up to `retries` (2) more times,
-`retryInterval` (30s) apart, before it alerts. After that it goes back to
-its normal interval, so a failing target sees at most three contacts in a
-minute, then the usual rate. A down agent's host checks don't rerun on
+`retryInterval` (1m) apart, before it alerts. After that it goes back to
+its normal interval, so a failing target sees at most three contacts in
+three minutes, then the usual rate. A down agent's host checks don't rerun on
 their own; they wait for the next poll.
 
 ## What servers will log
@@ -89,7 +88,7 @@ The rules that keep email down, with their defaults:
 | rule | effect |
 |---|---|
 | retries | a failure must repeat 3 times (about a minute) before it counts |
-| batching | changes found within 30 seconds go out as one email |
+| batching | changes from one batch of checks go out as one email |
 | one email per change | a check that stays broken sends nothing more |
 | `renotifyInterval` (1h) | after an email about a check, its next change waits at least an hour, so flapping sends at most one email an hour per check |
 | flap absorption | a check that changes and changes back before its next email is due sends nothing |

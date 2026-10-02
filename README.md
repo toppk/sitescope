@@ -30,7 +30,7 @@ JSON config that the NixOS module renders from `services.sitescope.settings`.
 | dns (`host.*.knot`) | Knot zones loaded, not near expiry, none missing | with agent poll |
 | domains (`domain.`) | RDAP registration expiry; warn 45 days, crit 14 | 12h |
 | tls (`tls.`) | certificate days left over HTTPS or SMTP STARTTLS, per IP family, chain verified; warn 20, crit 7; optional ALPN (`alpn: "h2"`) | 6h |
-| tls (`ct.`) | Certificate Transparency (Cert Spotter): valid certificates for each domain from an unexpected CA (crit) or for unexpected names (warn) | 6h |
+| tls (`ct.`) | Certificate Transparency (Cert Spotter): valid certificates for each domain from an unexpected CA (crit) or for unexpected names (warn) | 24h, domains spread over the day |
 | http (`http.`) | status code and latency | 1m |
 | mail (`mail.`) | SMTP banner per address; daily open-relay probe expecting 554; DNS blocklists through the local unbound | 5m / 24h / 1h |
 | mail (`host.*.postfix`) | queue size and oldest message age | with agent poll |
@@ -40,11 +40,14 @@ JSON config that the NixOS module renders from `services.sitescope.settings`.
 
 Every check has `ok`, `warn` or `crit` (plus `unknown`, and `locked` while the
 vault is locked). A move into warn/crit must repeat `retries` more times
-(`retryInterval` apart) before it counts. Recovery counts at once.
+(`retryInterval` apart) before it counts. Recovery counts at once. Runs land
+on a `hub.tick` grid (1m) at a fixed phase per check, so the hub sleeps
+between steps and targets see an even rate; checks sharing a rate-limited
+API (CT) are spread evenly over their interval.
 
 ## Alerts
 
-Changes are batched every 30 seconds into one email, sent via SMTP to
+Changes from each batch of checks go out as one email, sent via SMTP to
 `127.0.0.1:25` (postfix signs it). Once a check has been notified, its next
 change waits at least `renotifyInterval` (default 1h). A check that flaps back
 to the notified status sends nothing. The first sighting of a healthy check is
@@ -186,8 +189,8 @@ Reference (all optional; defaults shown):
 
 | key | default | notes |
 |---|---|---|
-| `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "30s"}` | every section and HTTP target takes the same four keys |
-| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
+| `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "1m"}` | every section and HTTP target takes the same four keys |
+| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `tick: "1m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (negative disables), `digestTime` (`"HH:MM"`, local time) | |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`, 0 disables a bound |

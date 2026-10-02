@@ -21,6 +21,28 @@ a service light) or `private` (not on the public page at all). See
 Every check has its own timing: `interval`, `timeout`, `retries` and
 `retryInterval`, set per section or inherited from `defaults`.
 
+## Scheduling
+
+The hub plans its work instead of polling a clock. Every run lands on a
+grid of `hub.tick` steps (1 minute) counted from the hub's start, and
+between steps the hub sleeps.
+
+- **Phases.** Each check gets a fixed offset within its interval.
+  Checks that run every tick (the agent polls) start together; slower
+  checks get a stable spot in the first 15 minutes, so the 5-minute DNS
+  and SMTP probes and the hourly ones don't all hit their targets at once.
+- **Spread groups.** Checks that share a rate-limited API are spaced evenly
+  over their interval: the CT checks, one per domain, every 24 hours.
+- **Host checks** run as soon as their agent's report arrives.
+- **Restarts.** A check that ran before a restart keeps its pace; one that
+  never ran shows "first run at …" until its slot.
+- **Retries** wait for the next step after `retryInterval`; an API's
+  `Retry-After` brings the next run forward.
+- **Housekeeping** follows the work: when a batch of results is in, the
+  hub sends one email for what changed, then pings the heartbeat, saves
+  state and prunes history when those are due. It wakes at least every
+  5 minutes.
+
 ## Statuses
 
 | status | means | counts toward a light |
@@ -48,8 +70,8 @@ report already passed the agent's retries.
 
 ## Notifications
 
-Every 30 seconds the hub gathers committed changes that are due and sends
-them in one email.
+When a batch of checks finishes, the hub gathers the committed changes
+that are due and sends them in one email.
 
 - **The first ok is silent.** A check seen healthy for the first time
   sends nothing.

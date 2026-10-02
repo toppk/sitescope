@@ -90,6 +90,8 @@ type Hub struct {
 	DocsURL       string   `json:"docsURL"`
 	RetentionDays int      `json:"retentionDays"`
 	SampleEvery   Duration `json:"sampleEvery"`
+	// Tick is the scheduler's grid: every run lands on a multiple of it from the start.
+	Tick Duration `json:"tick"`
 	// HeartbeatInterval is how often SITESCOPE_HEARTBEAT_URL is pinged.
 	HeartbeatInterval Duration `json:"heartbeatInterval"`
 	Concurrency       int      `json:"concurrency"`
@@ -356,7 +358,7 @@ func (c *Config) applyDefaults() {
 		Interval:      Duration(5 * time.Minute),
 		Timeout:       Duration(10 * time.Second),
 		Retries:       intp(2),
-		RetryInterval: Duration(30 * time.Second),
+		RetryInterval: Duration(time.Minute),
 	})
 	h := &c.Hub
 	def := func(s *string, v string) {
@@ -378,6 +380,9 @@ func (c *Config) applyDefaults() {
 	def(&h.DocsURL, "https://toppk.github.io/sitescope/")
 	if h.RetentionDays == 0 {
 		h.RetentionDays = 35
+	}
+	if h.Tick == 0 {
+		h.Tick = Duration(time.Minute)
 	}
 	if h.HeartbeatInterval == 0 {
 		h.HeartbeatInterval = Duration(time.Minute)

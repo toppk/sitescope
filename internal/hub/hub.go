@@ -2,11 +2,9 @@
 package hub
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,6 +39,7 @@ type Hub struct {
 
 	wake     chan string
 	lastTick atomic.Int64
+	nextWake atomic.Int64 // when the scheduler plans to wake, for /healthz
 	started  time.Time
 	storeErr atomic.Bool
 }
@@ -118,101 +117,10 @@ func (h *Hub) Run(ctx context.Context) error {
 	}
 }
 
-func jitter(id string, max time.Duration) time.Duration {
-	if max <= 0 {
-		return 0
-	}
-	f := fnv.New32a()
-	f.Write([]byte(id))
-	return time.Duration(f.Sum32()) % max
-}
-
 type result struct {
 	c   *check.Check
 	r   check.Result
 	end time.Time
-}
-
-func (h *Hub) schedule(ctx context.Context) {
-	next := map[string]time.Time{}
-	running := map[string]bool{}
-	dependents := map[string][]string{}
-	now := time.Now()
-	h.mu.Lock()
-	for _, c := range h.checks {
-		next[c.ID] = now.Add(cmp.Or(c.Offset, jitter(c.ID, min(c.Interval, 30*time.Second))))
-		// a restart doesn't rerun what ran recently; daily and hourly checks keep their pace
-		if st := h.states[c.ID]; st.Status != status.Unknown && st.Status != status.Locked && !st.LastRun.IsZero() {
-			if resume := st.LastRun.Add(c.Interval); resume.After(next[c.ID]) {
-				next[c.ID] = resume
-			}
-		}
-		if c.DependsOn != "" {
-			dependents[c.DependsOn] = append(dependents[c.DependsOn], c.ID)
-			next[c.ID] = next[c.ID].Add(5 * time.Second)
-		}
-	}
-	h.mu.Unlock()
-	sem := make(chan struct{}, h.cfg.Hub.Concurrency)
-	results := make(chan result, len(h.checks))
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	var lastBeat, lastNotify, lastPrune, lastSave time.Time
-
-	for {
-		select {
-		case <-ctx.Done():
-			h.store.SaveStates(h.snapshotStates())
-			return
-		case id := <-h.wake:
-			next[id] = time.Time{}
-			continue
-		case res := <-results:
-			running[res.c.ID] = false
-			retry := h.handle(res)
-			switch {
-			case retry:
-				next[res.c.ID] = res.end.Add(res.c.RetryInterval)
-			case res.r.RetryIn > 0:
-				next[res.c.ID] = res.end.Add(min(res.r.RetryIn, res.c.Interval))
-			default:
-				next[res.c.ID] = res.end.Add(res.c.Interval)
-			}
-			for _, d := range dependents[res.c.ID] {
-				next[d] = time.Time{}
-			}
-		case now = <-tick.C:
-		}
-		now = time.Now()
-		h.lastTick.Store(now.Unix())
-		for _, c := range h.checks {
-			if running[c.ID] || now.Before(next[c.ID]) {
-				continue
-			}
-			running[c.ID] = true
-			go h.run(ctx, c, sem, results)
-		}
-		if now.Sub(lastNotify) >= 30*time.Second {
-			lastNotify = now
-			h.notify(now)
-			h.digest(now)
-		}
-		if now.Sub(lastBeat) >= h.cfg.Hub.HeartbeatInterval.D() {
-			lastBeat = now
-			h.heartbeat(ctx)
-		}
-		if now.Sub(lastSave) >= 5*time.Minute {
-			lastSave = now
-			if err := h.store.SaveStates(h.snapshotStates()); err != nil {
-				h.storeErr.Store(true)
-				slog.Error("saving states failed", "err", err)
-			}
-		}
-		if now.Sub(lastPrune) >= 6*time.Hour {
-			lastPrune = now
-			h.prune(now)
-		}
-	}
 }
 
 func (h *Hub) run(ctx context.Context, c *check.Check, sem chan struct{}, out chan<- result) {

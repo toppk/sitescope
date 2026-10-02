@@ -284,6 +284,8 @@ func TestStuckUnknownAlertsButNotUnderDownAgent(t *testing.T) {
 	now := time.Now()
 	h.started = now.Add(-2 * time.Hour)
 	h.states["host.alpha.agent"].Status = status.Crit
+	h.states["domain.example.org"].LastRun = now.Add(-90 * time.Minute) // ran, but couldn't decide
+	h.states["host.alpha.disk"].LastRun = now.Add(-90 * time.Minute)
 	h.notify(now)
 	if st := h.states["domain.example.org"]; st.Notified != status.Unknown || st.NotifiedAt.IsZero() {
 		t.Error("a check unknown since startup should alert")

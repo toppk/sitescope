@@ -71,7 +71,8 @@ func staticFiles() http.Handler {
 }
 
 func (h *Hub) healthz(w http.ResponseWriter, _ *http.Request) {
-	if time.Since(time.Unix(h.lastTick.Load(), 0)) > 2*time.Minute {
+	// the scheduler may sleep for minutes; it is stalled only when it misses its own wake-up
+	if time.Since(time.Unix(h.nextWake.Load(), 0)) > 2*time.Minute {
 		http.Error(w, "scheduler stalled", http.StatusServiceUnavailable)
 		return
 	}

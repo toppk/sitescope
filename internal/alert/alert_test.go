@@ -131,3 +131,23 @@ func TestUnknownAndLockedDoNotNotify(t *testing.T) {
 		t.Fatal("recovery from crit (via unknown) should notify")
 	}
 }
+
+func TestStuckUnknown(t *testing.T) {
+	t0 := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	var s State
+	if s.StuckUnknown(t0) {
+		t.Fatal("a check waiting for its first run isn't stuck")
+	}
+	s.Observe(status.Unknown, "RDAP: timeout", 0, 2, t0)
+	if !s.StuckUnknown(t0.Add(time.Hour)) {
+		t.Fatal("a check that ran and couldn't decide is stuck")
+	}
+	s.MarkNotified(t0.Add(time.Hour))
+	if s.StuckUnknown(t0.Add(2 * time.Hour)) {
+		t.Fatal("reported once only")
+	}
+	s.Observe(status.OK, "fine", 0, 2, t0.Add(3*time.Hour))
+	if !s.Due(t0.Add(3*time.Hour), time.Hour) {
+		t.Fatal("recovery after an unknown alert is news")
+	}
+}

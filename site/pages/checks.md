@@ -43,7 +43,7 @@ check warns unless the server chooses h2.
 
 ## Certificate Transparency
 
-Section `ct`, every 6 hours. Every public certificate is logged in
+Section `ct`, once a day per domain. Every public certificate is logged in
 Certificate Transparency logs, so a certificate you didn't ask for (a
 mis-issuing CA, or someone who briefly controlled your DNS or a web
 server) shows up there. `ct.DOMAIN` asks
@@ -59,8 +59,9 @@ currently valid certificates, subdomains included:
 Acknowledge a certificate by adding its SHA-256 (or a prefix) to `ignore`.
 Domains default to `domains.names`; one request per domain covers all its
 subdomains. Without a key Cert Spotter allows 10 requests an hour, so the
-domains' first runs start 6 minutes apart, a restart doesn't rerun them,
-and a refused request is retried when Cert Spotter's `Retry-After` says.
+domains are spread evenly over the day (9 domains run 2h40m apart), a
+restart keeps that spacing, and a refused request is retried when Cert
+Spotter's `Retry-After` says.
 A key in the vault as `certspotter_token` raises the limit.
 
 ```nix
