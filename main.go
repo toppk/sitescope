@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"os"
@@ -70,7 +71,9 @@ func main() {
 	case "unlock", "lock", "status":
 		err = runControl(cmd, args)
 	case "vault":
-		err = runVault(args)
+		if err = runVault(args); errors.Is(err, fs.ErrPermission) {
+			err = fmt.Errorf("%w (vault commands run as the hub user: sudo -u sitescope sitescope vault ...)", err)
+		}
 	case "version":
 		fmt.Println(version)
 	case "-h", "--help", "help":
