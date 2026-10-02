@@ -195,13 +195,13 @@ func (b *builder) ct() {
 	if c == nil {
 		return
 	}
-	// requests are spaced ctSpacing apart, so the timeout covers waiting behind the other domains
-	t := c.Timing.Merge(config.Timing{Interval: config.Duration(6 * time.Hour),
-		Timeout: config.Duration(ctSpacing*time.Duration(len(c.Domains)) + 30*time.Second), RetryInterval: config.Duration(10 * time.Minute)})
+	t := c.Timing.Merge(config.Timing{Interval: config.Duration(6 * time.Hour), Timeout: config.Duration(30 * time.Second),
+		RetryInterval: config.Duration(10 * time.Minute)})
 	api := &ctAPI{base: strings.TrimSuffix(c.API, "/"), secret: c.TokenSecret}
-	for _, d := range c.Domains {
+	for i, d := range c.Domains {
 		d = fqdn(d)
 		b.add(t, &Check{ID: "ct." + d, Name: "CT log certificates for " + d, Area: "tls", Group: "CT logs",
+			Offset: time.Duration(i) * ctSpacing,
 			Probes: []Probe{urlProbe(c.API, "HTTPS GET currently valid certificates for the domain and its subdomains")},
 			Run:    ctCheck(api, d, c)})
 	}

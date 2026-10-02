@@ -14,6 +14,8 @@ type Result struct {
 	Status  Status        `json:"status"`
 	Message string        `json:"message"`
 	Took    time.Duration `json:"took"`
+	// RetryIn asks for the next run sooner than the interval, e.g. after an API's Retry-After.
+	RetryIn time.Duration `json:"-"`
 }
 
 func Okf(f string, a ...any) Result   { return Result{Status: OK, Message: fmt.Sprintf(f, a...)} }
@@ -39,6 +41,8 @@ type Check struct {
 	Secret string
 	// DependsOn names the check whose result this one reads (an agent poll).
 	DependsOn string
+	// Offset delays the first run, to spread checks that share an API's rate limit.
+	Offset time.Duration
 	// Group is the host or target the check is about, for display; "" stands alone.
 	Group  string
 	Probes []Probe

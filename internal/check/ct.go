@@ -8,7 +8,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/toppk/sitescope/internal/config"
@@ -33,35 +32,16 @@ func (c CTIssuance) issuer() string {
 	return c.Issuer.Name
 }
 
-// ctSpacing keeps unauthenticated use within Cert Spotter's free rate limit.
-const ctSpacing = 7 * time.Second
+// ctSpacing staggers the domains' first runs: Cert Spotter allows 10 requests an hour without a key.
+const ctSpacing = 6 * time.Minute
 
 type ctAPI struct {
 	base, secret string
-	mu           sync.Mutex
-	last         time.Time
-}
-
-func (a *ctAPI) wait(ctx context.Context) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if d := ctSpacing - time.Since(a.last); d > 0 {
-		select {
-		case <-time.After(d):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	a.last = time.Now()
-	return nil
 }
 
 func ctCheck(a *ctAPI, domain string, cfg *config.CT) func(context.Context, *Env) Result {
 	allowed := append(slices.Clone(cfg.Issuers), cfg.DomainIssuers[domain]...)
 	return func(ctx context.Context, env *Env) Result {
-		if err := a.wait(ctx); err != nil {
-			return Unknownf("%v", err)
-		}
 		q := url.Values{"domain": {domain}, "include_subdomains": {"true"}, "expand": {"dns_names", "issuer"}}
 		hdr := map[string]string{}
 		if env.Secret != nil {
@@ -72,7 +52,9 @@ func ctCheck(a *ctAPI, domain string, cfg *config.CT) func(context.Context, *Env
 		var certs []CTIssuance
 		err := getJSON(ctx, env, a.base+"/issuances?"+q.Encode(), hdr, &certs)
 		if se, ok := err.(*httpStatusError); ok && se.code == 429 {
-			return Unknownf("rate limited by Cert Spotter; will try again next round")
+			r := Unknownf("rate limited by Cert Spotter (10 requests an hour without a key)")
+			r.RetryIn = cmp.Or(se.retryAfter, time.Hour)
+			return r
 		}
 		if err != nil {
 			return Unknownf("Cert Spotter: %v", err)

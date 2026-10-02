@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,12 +44,19 @@ func getJSON(ctx context.Context, env *Env, url string, hdr map[string]string, v
 	body := io.LimitReader(resp.Body, 4<<20)
 	if resp.StatusCode != 200 {
 		io.Copy(io.Discard, body)
-		return &httpStatusError{resp.StatusCode}
+		e := &httpStatusError{code: resp.StatusCode}
+		if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil {
+			e.retryAfter = time.Duration(s) * time.Second
+		}
+		return e
 	}
 	return json.NewDecoder(body).Decode(v)
 }
 
-type httpStatusError struct{ code int }
+type httpStatusError struct {
+	code       int
+	retryAfter time.Duration
+}
 
 func (e *httpStatusError) Error() string { return fmt.Sprintf("HTTP %d", e.code) }
 

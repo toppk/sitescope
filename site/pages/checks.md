@@ -57,9 +57,11 @@ currently valid certificates, subdomains included:
   renewal you didn't expect is visible.
 
 Acknowledge a certificate by adding its SHA-256 (or a prefix) to `ignore`.
-Domains default to `domains.names`. Requests are spaced 7 seconds apart to
-stay within Cert Spotter's free limit; a key in the vault as
-`certspotter_token` raises it.
+Domains default to `domains.names`; one request per domain covers all its
+subdomains. Without a key Cert Spotter allows 10 requests an hour, so the
+domains' first runs start 6 minutes apart, a restart doesn't rerun them,
+and a refused request is retried when Cert Spotter's `Retry-After` says.
+A key in the vault as `certspotter_token` raises the limit.
 
 ```nix
 ct = {

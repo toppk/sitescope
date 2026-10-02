@@ -2,6 +2,7 @@
 package hub
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -137,13 +138,21 @@ func (h *Hub) schedule(ctx context.Context) {
 	running := map[string]bool{}
 	dependents := map[string][]string{}
 	now := time.Now()
+	h.mu.Lock()
 	for _, c := range h.checks {
-		next[c.ID] = now.Add(jitter(c.ID, min(c.Interval, 30*time.Second)))
+		next[c.ID] = now.Add(cmp.Or(c.Offset, jitter(c.ID, min(c.Interval, 30*time.Second))))
+		// a restart doesn't rerun what ran recently; daily and hourly checks keep their pace
+		if st := h.states[c.ID]; st.Status != status.Unknown && st.Status != status.Locked && !st.LastRun.IsZero() {
+			if resume := st.LastRun.Add(c.Interval); resume.After(next[c.ID]) {
+				next[c.ID] = resume
+			}
+		}
 		if c.DependsOn != "" {
 			dependents[c.DependsOn] = append(dependents[c.DependsOn], c.ID)
 			next[c.ID] = next[c.ID].Add(5 * time.Second)
 		}
 	}
+	h.mu.Unlock()
 	sem := make(chan struct{}, h.cfg.Hub.Concurrency)
 	results := make(chan result, len(h.checks))
 	tick := time.NewTicker(time.Second)
@@ -161,9 +170,12 @@ func (h *Hub) schedule(ctx context.Context) {
 		case res := <-results:
 			running[res.c.ID] = false
 			retry := h.handle(res)
-			if retry {
+			switch {
+			case retry:
 				next[res.c.ID] = res.end.Add(res.c.RetryInterval)
-			} else {
+			case res.r.RetryIn > 0:
+				next[res.c.ID] = res.end.Add(min(res.r.RetryIn, res.c.Interval))
+			default:
 				next[res.c.ID] = res.end.Add(res.c.Interval)
 			}
 			for _, d := range dependents[res.c.ID] {

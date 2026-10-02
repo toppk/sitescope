@@ -3,6 +3,8 @@ package check
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
@@ -542,5 +544,34 @@ func TestEvalCT(t *testing.T) {
 	if r := EvalCT(certs, cdn, []string{"example.org", `\*.example.org`, "da.example.org"}, nil, now, week); r.Status != Warn ||
 		!strings.Contains(r.Message, "unexpected name static.example.org") {
 		t.Errorf("a name outside the list warns: %+v", r)
+	}
+}
+
+func TestCTRateLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("domain") == "limited.example" {
+			w.Header().Set("Retry-After", "120")
+			w.WriteHeader(429)
+			return
+		}
+		w.Write([]byte(`[{"cert_sha256":"ab","dns_names":["www.ok.example"],"issuer":{"friendly_name":"Let's Encrypt"},"not_before":"2026-10-01T00:00:00Z"}]`))
+	}))
+	defer srv.Close()
+	cfg := &config.CT{Issuers: []string{"Let's Encrypt"}, Recent: config.Duration(7 * 24 * time.Hour)}
+	api := &ctAPI{base: srv.URL}
+	env := &Env{HTTP: srv.Client()}
+	if r := ctCheck(api, "limited.example", cfg)(context.Background(), env); r.Status != Unknown || r.RetryIn != 2*time.Minute {
+		t.Errorf("429 = %+v", r)
+	}
+	if r := ctCheck(api, "ok.example", cfg)(context.Background(), env); r.Status != OK || !strings.Contains(r.Message, "www.ok.example") {
+		t.Errorf("ok = %+v", r)
+	}
+	c, err := config.Parse([]byte(`{"ct": {"domains": ["a.example", "b.example"]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := Build(c)
+	if err != nil || len(checks) != 2 || checks[1].Offset != ctSpacing {
+		t.Errorf("CT checks are staggered: %v %+v", err, checks)
 	}
 }
