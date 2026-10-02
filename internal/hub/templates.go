@@ -100,7 +100,7 @@ var templates = template.Must(template.New("").Funcs(funcs).Parse(`
 <dt>30 days</dt><dd>{{template "strip" .Days}}</dd>
 </dl></div>{{end}}
 <h2>History</h2><div class="card"><table><tr><th>UTC</th><th>status</th><th>ms</th><th>message</th></tr>
-{{range .History}}<tr><td>{{ts .Time}}</td><td><span class="dot {{.Status}}"></span></td><td>{{.TookMS}}</td><td class="m">{{.Message}}</td></tr>{{end}}
+{{range .History}}<tr><td>{{ts .Time}}</td><td><span class="dot {{.Status}}"></span> {{.Status}}</td><td>{{.TookMS}}</td><td class="m">{{.Message}}</td></tr>{{end}}
 </table></div>
 {{template "foot" .}}{{end}}
 `))
