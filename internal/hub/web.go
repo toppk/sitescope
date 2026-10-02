@@ -54,7 +54,7 @@ func headers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
 		hd.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; img-src 'self'; "+
-			"style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "+
+			"style-src 'self'; "+
 			"base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "no-referrer")

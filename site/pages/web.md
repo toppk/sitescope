@@ -21,9 +21,9 @@ front of it.
     The page reloads every `hub.refresh` seconds and works without
     JavaScript. With it, the sun button switches light and dark (otherwise
     the system setting applies), and expanded sections stay expanded across
-    reloads. It uses the documentation site's palette and fonts; the fonts
-    come from Google Fonts, with system fallbacks. The footer links to the
-    documentation (`hub.docsURL`).
+    reloads. It uses the documentation site's palette on system fonts and
+    loads nothing from third parties. The footer links to the documentation
+    (`hub.docsURL`).
 
 `/status.json`
 :   The public page as JSON, with exactly the same facts: overall status,
@@ -145,7 +145,7 @@ counts. `retrying` appears on a check that is in the middle of its retries;
 ## Headers
 
 Every response sets a `Content-Security-Policy` that allows only the
-hub's own scripts, styles and images (served from `/static/`), Google
-Fonts, and no framing or forms, plus `X-Content-Type-Options: nosniff`
+hub's own scripts, styles and images (served from `/static/`), and no
+framing or forms, plus `X-Content-Type-Options: nosniff`
 and `Referrer-Policy: no-referrer`. Authenticated responses are
 `Cache-Control: no-store`.

@@ -1,9 +1,9 @@
-/* sitescope status pages: the Horizon palette from the documentation site. */
+/* sitescope status pages: the Horizon palette from the documentation site, on system fonts. */
 :root {
-  --font-display: "Michroma", "Eurostile", "Arial Black", sans-serif;
-  --font-head: "Jost", "Futura", "Century Gothic", "Avenir Next", sans-serif;
-  --font-body: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-body);
+  --font-head: var(--font-body);
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   --sky-950: #0a1631;
   --sky-900: #0f2147;
