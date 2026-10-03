@@ -133,6 +133,13 @@ From the agent's report, area `hygiene`.
 - `host.HOST.nixpkgs`: age of the nixpkgs revision in `nixos-version`:
   warn at 30 days, crit at 90.
 
+## Monitoring
+
+`hub.vault`, every tick: `locked` while the vault has been locked under
+`hub.lockedAfter` (15 minutes), then warn until someone runs
+`sitescope unlock`, so a restart nobody followed up on sends an email.
+Negative `lockedAfter` removes the check.
+
 ## Cloud
 
 Hourly (token expiry daily), and only while the vault is unlocked; until then these checks

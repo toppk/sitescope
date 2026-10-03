@@ -61,7 +61,7 @@ func New(cfg *config.Config) (*Hub, error) {
 	}
 	h := &Hub{
 		cfg: cfg, checks: checks, byID: map[string]*check.Check{}, store: st,
-		vault:        &Vault{path: cfg.Hub.Vault},
+		vault:        &Vault{path: cfg.Hub.Vault, since: time.Now()},
 		heartbeatURL: os.Getenv("SITESCOPE_HEARTBEAT_URL"),
 		recordedAt:   map[string]time.Time{}, recorded: map[string]status.Status{},
 		wake: make(chan string, 64),
@@ -74,11 +74,14 @@ func New(cfg *config.Config) (*Hub, error) {
 		Secret:     h.vault.Get,
 		Reports:    &check.Reports{},
 	}
+	if cfg.Hub.LockedAfter > 0 {
+		h.checks = append(h.checks, h.vaultCheck())
+	}
 	h.states, err = st.States()
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range checks {
+	for _, c := range h.checks {
 		h.byID[c.ID] = c
 		if h.states[c.ID] == nil {
 			h.states[c.ID] = &alert.State{}
@@ -193,7 +196,7 @@ func (h *Hub) snapshotStates() map[string]*alert.State {
 
 func (h *Hub) wakeSecretChecks() {
 	for _, c := range h.checks {
-		if c.Secret != "" {
+		if c.Secret != "" || c.ID == vaultCheckID {
 			select {
 			case h.wake <- c.ID:
 			default:

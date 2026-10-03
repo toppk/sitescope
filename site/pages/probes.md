@@ -96,7 +96,7 @@ The rules that keep email down, with their defaults:
 | first sighting | a check seen healthy for the first time sends nothing |
 | unknown | silent at first; one UNKNOWN email after `unknownAfter` (1h); nothing for checks under a down agent |
 | digest | one a day after `digestTime`; skipped on the day of a start after that time |
-| startup | one "vault LOCKED" email per start |
+| startup | one "vault LOCKED" email per start; one `hub.vault` WARN if still locked after `hub.lockedAfter` (15m), and its recovery |
 
 So the worst case for one check that flaps all day is about 24 emails,
 batched with anything else that changed at the same time. A host that goes

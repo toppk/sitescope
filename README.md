@@ -37,6 +37,7 @@ JSON config that the NixOS module renders from `services.sitescope.settings`.
 | hosts (`host.`) | agent reachable, disk, memory (cache excluded), swap, load per CPU, failed units, WireGuard handshake age; 5-minute rates of CPU, memory pressure (PSI stalls, swap-in, OOM kills), disk I/O, network; services against their MemoryMax | 1m |
 | hygiene (`host.*.reboot`, `.nixpkgs`) | kernel/initrd changed since boot; nixpkgs age (warn 30 days) | with agent poll |
 | cloud (`linode.`, `cloudflare.`) | Linode balance / payment due, accrued charges, transfer, maintenance and notices, notable events, instance status; Cloudflare records vs. expected set; Cloudflare API token expiry (daily) | 1h, needs vault |
+| hub (`hub.vault`) | vault still locked `hub.lockedAfter` (15m) after a start or `sitescope lock`: warn | every tick |
 
 Every check has `ok`, `warn` or `crit` (plus `unknown`, and `locked` while the
 vault is locked). A move into warn/crit must repeat `retries` more times
@@ -191,7 +192,7 @@ Reference (all optional; defaults shown):
 | key | default | notes |
 |---|---|---|
 | `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "1m"}` | every section and HTTP target takes the same four keys |
-| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (footer link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `tick: "1m"`, `concurrency: 8` | history keeps every status change plus one sample per `sampleEvery` |
+| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (nav link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"`, `concurrency: 8` | `hub.vault` warns once the vault has been locked `lockedAfter`; history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (negative disables), `digestTime` (`"HH:MM"`, local time) | |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`, 0 disables a bound |

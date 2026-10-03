@@ -89,7 +89,9 @@ that are due and sends them in one email.
   as UNKNOWN, and its recovery is reported. Checks whose agent is down stay
   quiet; the agent's own alert covers them.
 - **Startup.** Every start sends "sitescope started on HOST - vault LOCKED,
-  run sitescope unlock".
+  run sitescope unlock". If the vault is still locked `hub.lockedAfter`
+  (15 minutes) later, `hub.vault` sends one WARN email, and a recovery
+  email once you unlock.
 
 A failed send is retried on the next 30-second round.
 

@@ -314,3 +314,29 @@ func TestProbesListsDestinations(t *testing.T) {
 		}
 	}
 }
+
+func TestVaultCheck(t *testing.T) {
+	h := testHub(t)
+	c := h.byID[vaultCheckID]
+	if c == nil || c.Secret != "" || c.Interval != time.Minute {
+		t.Fatalf("hub.vault = %+v", c)
+	}
+	start := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	if r := vaultStatus(false, start, start.Add(5*time.Minute), 15*time.Minute, "hub"); r.Status != status.Locked || r.Message != "locked for 5m; warns after 15m" {
+		t.Errorf("fresh lock = %+v", r)
+	}
+	if r := vaultStatus(false, start, start.Add(20*time.Minute), 15*time.Minute, "hub"); r.Status != status.Warn ||
+		!strings.Contains(r.Message, "locked for 20m") || !strings.Contains(r.Message, "sitescope unlock on hub") {
+		t.Errorf("long lock = %+v", r)
+	}
+	if r := vaultStatus(true, start, start.Add(time.Hour), 15*time.Minute, "hub"); r.Status != status.OK {
+		t.Errorf("unlocked = %+v", r)
+	}
+	st := h.states[vaultCheckID]
+	for _, s := range []status.Status{status.Locked, status.Warn} {
+		st.Observe(s, "", 0, c.Retries, start)
+	}
+	if !st.Due(start, time.Hour) {
+		t.Error("a long lock after a restart should email")
+	}
+}

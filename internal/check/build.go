@@ -15,6 +15,7 @@ import (
 var Areas = []struct{ ID, Name string }{
 	{"dns", "DNS"}, {"mail", "Mail"}, {"http", "Web"}, {"tls", "Certificates"},
 	{"domains", "Domains"}, {"hosts", "Servers"}, {"hygiene", "Maintenance"}, {"cloud", "Hosting account"},
+	{"hub", "Monitoring"},
 }
 
 type builder struct {

@@ -94,7 +94,9 @@ type Hub struct {
 	Tick Duration `json:"tick"`
 	// HeartbeatInterval is how often SITESCOPE_HEARTBEAT_URL is pinged.
 	HeartbeatInterval Duration `json:"heartbeatInterval"`
-	Concurrency       int      `json:"concurrency"`
+	// LockedAfter is how long the vault may stay locked before hub.vault warns; negative disables.
+	LockedAfter Duration `json:"lockedAfter"`
+	Concurrency int      `json:"concurrency"`
 }
 
 type Agent struct {
@@ -386,6 +388,9 @@ func (c *Config) applyDefaults() {
 	}
 	if h.Tick == 0 {
 		h.Tick = Duration(time.Minute)
+	}
+	if h.LockedAfter == 0 {
+		h.LockedAfter = Duration(15 * time.Minute)
 	}
 	if h.HeartbeatInterval == 0 {
 		h.HeartbeatInterval = Duration(time.Minute)

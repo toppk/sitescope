@@ -111,6 +111,7 @@ sudo -u sitescope sitescope vault set-password            # password for the det
 sitescope unlock
 ```
 
-The hub sends "vault LOCKED" email every time it starts. Run
+The hub sends "vault LOCKED" email every time it starts, and the
+`hub.vault` check warns if the vault is still locked 15 minutes later. Run
 `sitescope unlock` again after each restart. See
 [Vault and secrets](vault.html).
