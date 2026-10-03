@@ -135,7 +135,7 @@ From the agent's report, area `hygiene`.
 
 ## Cloud
 
-Hourly, and only while the vault is unlocked; until then these checks
+Hourly (token expiry daily), and only while the vault is unlocked; until then these checks
 report `locked`.
 
 | id | checks |
@@ -145,4 +145,5 @@ report `locked`.
 | `linode.maintenance` | scheduled maintenance and account notices: warn |
 | `linode.events` | in the last `eventWindow` (24h): failed events, and reboots, migrations, rebuilds, resizes, shutdowns, deletions, user and password changes: warn |
 | `linode.instance.NAME` | instance status is `running`, else crit |
+| `cloudflare.tokens` | daily: sitescope's own token, plus the tokens named in `tokens` (default every active one), by days until they expire (`tokenDays` `{30, 7}`). Disabled, expired or a named token not found is crit; a name it can't see because listing was refused is warn |
 | `cloudflare.records.ZONE` | every `expected` record exists: missing is crit. Any other record with an expected name and type, or a `watch`ed one, is warn |

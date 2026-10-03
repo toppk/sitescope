@@ -1,14 +1,17 @@
 package check
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/toppk/sitescope/internal/config"
+	"github.com/toppk/sitescope/internal/status"
 )
 
 type cfRecord struct {
@@ -137,4 +140,121 @@ func CompareRecords(actual, expected, watch []config.DNSRecord) Result {
 		return Warnf("unexpected: %s", strings.Join(extra, "; "))
 	}
 	return Okf("%d expected records present, %d records in zone", len(expected), len(actual))
+}
+
+// CFToken is an API token as Cloudflare's verify and list endpoints describe it.
+type CFToken struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	ExpiresOn string `json:"expires_on"`
+}
+
+func cfTokensCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
+	base := strings.TrimSuffix(c.API, "/")
+	return func(ctx context.Context, env *Env) Result {
+		token, ok := env.Secret(c.TokenSecret)
+		if !ok {
+			return Unknownf("secret %s not in vault", c.TokenSecret)
+		}
+		hdr := map[string]string{"Authorization": "Bearer " + token}
+		var v struct {
+			Result CFToken `json:"result"`
+		}
+		err := getJSON(ctx, env, base+"/user/tokens/verify", hdr, &v)
+		if err != nil && c.AccountID != "" {
+			err = getJSON(ctx, env, base+"/accounts/"+url.PathEscape(c.AccountID)+"/tokens/verify", hdr, &v)
+		}
+		if err != nil {
+			return Critf("verifying the token: %v", err)
+		}
+		lists := []string{base + "/user/tokens?per_page=50"}
+		if c.AccountID != "" {
+			lists = append(lists, base+"/accounts/"+url.PathEscape(c.AccountID)+"/tokens?per_page=50")
+		}
+		var listed []CFToken
+		refused := false
+		for _, u := range lists {
+			var l struct {
+				Result []CFToken `json:"result"`
+			}
+			if err := getJSON(ctx, env, u, hdr, &l); err != nil {
+				if se, ok := err.(*httpStatusError); ok && (se.code == 403 || se.code == 401) {
+					refused = true
+					continue
+				}
+				return Unknownf("listing tokens: %v", err)
+			}
+			listed = append(listed, l.Result...)
+		}
+		return EvalCFTokens(v.Result, listed, refused, c.Tokens, c.TokenDays, env.now())
+	}
+}
+
+// EvalCFTokens rates the named tokens (or, with none named, every active one) and this
+// check's own token by status and days until they expire.
+func EvalCFTokens(self CFToken, listed []CFToken, refused bool, names []string, days status.Threshold, now time.Time) Result {
+	var watch []CFToken
+	seen := map[string]bool{}
+	s := OK
+	var problems []string
+	if len(names) > 0 {
+		for _, n := range names {
+			i := slices.IndexFunc(listed, func(t CFToken) bool { return t.Name == n })
+			switch {
+			case i >= 0:
+				watch = append(watch, listed[i])
+				seen[listed[i].ID] = true
+			case refused:
+				s = Worst(s, Warn)
+				problems = append(problems, n+" not visible: listing tokens needs the API Tokens Read permission")
+			default:
+				s = Crit
+				problems = append(problems, n+" not found")
+			}
+		}
+	} else {
+		for _, t := range listed {
+			if t.Status == "active" && !seen[t.ID] {
+				watch = append(watch, t)
+				seen[t.ID] = true
+			}
+		}
+	}
+	if !seen[self.ID] {
+		if i := slices.IndexFunc(listed, func(t CFToken) bool { return t.ID == self.ID }); i >= 0 {
+			self.Name = listed[i].Name
+		}
+		if self.Name == "" {
+			self.Name = "sitescope's token"
+		}
+		watch = append(watch, self)
+	}
+	type row struct {
+		left time.Duration
+		text string
+	}
+	var rows []row
+	for _, t := range watch {
+		if t.Status != "active" {
+			s = Crit
+			problems = append(problems, t.Name+" is "+t.Status)
+			continue
+		}
+		exp, err := time.Parse(time.RFC3339, t.ExpiresOn)
+		if err != nil {
+			rows = append(rows, row{1 << 62, t.Name + " never expires"})
+			continue
+		}
+		left := exp.Sub(now)
+		d := left.Hours() / 24
+		s = Worst(s, days.Below(d))
+		rows = append(rows, row{left, fmt.Sprintf("%s expires %s (%.0f days)", t.Name, exp.UTC().Format("2006-01-02"), d)})
+	}
+	slices.SortFunc(rows, func(a, b row) int { return cmp.Compare(a.left, b.left) })
+	var parts []string
+	for _, r := range rows {
+		parts = append(parts, r.text)
+	}
+	return Rated(s, "%s", strings.Join(append(problems, parts...), "; "))
 }

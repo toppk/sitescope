@@ -51,7 +51,7 @@ privileges: CAP_NET_ADMIN (ambient, for `wg show`), groups postdrop and knot whe
 | name | minimum scope |
 |---|---|
 | `linode_token` | Linode PAT: Account Read Only, Events Read Only, Linodes Read Only |
-| `cloudflare_token` | Cloudflare token: Zone / DNS / Read on the one zone (Zone / Zone / Read only if `cloudflare.zoneId` is unset) |
+| `cloudflare_token` | Cloudflare token: Zone / DNS / Read on the one zone (Zone / Zone / Read only if `cloudflare.zoneId` is unset). To watch other tokens add User → API Tokens → Read (Account → Account API Tokens → Read for account-owned tokens); it shows names and expiry, never token values |
 | `admin_password_hash` | set with `sitescope vault set-password` |
 
 ## Wiring

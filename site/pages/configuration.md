@@ -50,7 +50,7 @@ target) can override it with the same four keys:
 | `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |
 | `mail.blocklists` | `resolver: "127.0.0.1:53"`, `ips`, `lists: [{zone, ipv6, crit}]` | |
 | `linode` | `tokenSecret: "linode_token"`, `instances: [{name, id}]`, `uninvoiced`, `transfer {80,95}`, `eventWindow: "24h"` | |
-| `cloudflare` | `tokenSecret: "cloudflare_token"`, `zone`, `zoneId`, `accountId`, `expected: [{type, name, content, priority}]`, `watch: [{type, name}]` | without `zoneId` the token also needs Zone Read to look the zone up; `accountId` narrows that lookup when the token sees several accounts |
+| `cloudflare` | `tokenSecret: "cloudflare_token"`, `zone`, `zoneId`, `accountId`, `expected: [{type, name, content, priority}]`, `watch: [{type, name}]`, `tokens: [names]`, `tokenDays: {30, 7}` | `tokens` names the API tokens to watch for expiry (default every active one, plus sitescope's own); without `zoneId` the token also needs Zone Read to look the zone up; `accountId` narrows that lookup when the token sees several accounts |
 
 ## Environment
 

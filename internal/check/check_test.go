@@ -14,6 +14,7 @@ import (
 
 	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/report"
+	"github.com/toppk/sitescope/internal/status"
 )
 
 func TestThresholds(t *testing.T) {
@@ -61,7 +62,7 @@ func TestBuildFromConfig(t *testing.T) {
 		"dns.resolve.da.example.org", "domain.example.org", "tls.da.example.org.https.443.v6",
 		"tls.da.example.org.smtp.25.v4", "http.portal", "mail.banner.alpha.v4", "mail.openrelay.alpha.v4",
 		"mail.blocklist.192.0.2.1", "host.alpha.agent", "host.alpha.postfix", "host.alpha.knot", "host.bravo.knot",
-		"host.alpha.reboot", "linode.account", "linode.instance.alpha", "cloudflare.records.example.org",
+		"host.alpha.reboot", "linode.account", "linode.instance.alpha", "cloudflare.records.example.org", "cloudflare.tokens",
 	} {
 		if ids[id] == nil {
 			t.Errorf("missing check %s", id)
@@ -573,5 +574,52 @@ func TestCTRateLimit(t *testing.T) {
 	checks, err := Build(c)
 	if err != nil || len(checks) != 2 || checks[1].Spread != "certspotter" || checks[1].Interval != 24*time.Hour {
 		t.Errorf("CT checks are staggered: %v %+v", err, checks)
+	}
+}
+
+func TestEvalCFTokens(t *testing.T) {
+	now, _ := time.Parse("2006-01-02", "2026-10-03")
+	days := status.Threshold{Warn: 30, Crit: 7}
+	self := CFToken{ID: "s", Status: "active", ExpiresOn: "2027-01-01T00:00:00Z"}
+	listed := []CFToken{
+		{ID: "s", Name: "sitescope", Status: "active", ExpiresOn: "2027-01-01T00:00:00Z"},
+		{ID: "c", Name: "certbot", Status: "active", ExpiresOn: "2026-10-20T00:00:00Z"},
+		{ID: "o", Name: "old", Status: "expired", ExpiresOn: "2026-01-01T00:00:00Z"},
+	}
+	r := EvalCFTokens(self, listed, false, nil, days, now)
+	if r.Status != Warn || r.Message != "certbot expires 2026-10-20 (17 days); sitescope expires 2027-01-01 (90 days)" {
+		t.Errorf("all active = %+v", r)
+	}
+	if r := EvalCFTokens(self, listed, false, []string{"certbot", "gone"}, days, now); r.Status != Crit || !strings.HasPrefix(r.Message, "gone not found;") {
+		t.Errorf("a missing named token = %+v", r)
+	}
+	if r := EvalCFTokens(self, listed, false, []string{"old"}, days, now); r.Status != Crit || !strings.Contains(r.Message, "old is expired") {
+		t.Errorf("an expired named token = %+v", r)
+	}
+	if r := EvalCFTokens(self, nil, true, []string{"certbot"}, days, now); r.Status != Warn ||
+		r.Message != "certbot not visible: listing tokens needs the API Tokens Read permission; sitescope's token expires 2027-01-01 (90 days)" {
+		t.Errorf("listing refused = %+v", r)
+	}
+	if r := EvalCFTokens(CFToken{ID: "s", Status: "active"}, nil, true, nil, days, now); r.Status != OK || r.Message != "sitescope's token never expires" {
+		t.Errorf("no expiry = %+v", r)
+	}
+}
+
+func TestCFTokensCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/accounts/acct/tokens/verify":
+			w.Write([]byte(`{"result":{"id":"s","status":"active","expires_on":"2027-01-01T00:00:00Z"}}`))
+		case "/accounts/acct/tokens":
+			w.Write([]byte(`{"result":[{"id":"s","name":"sitescope","status":"active","expires_on":"2027-01-01T00:00:00Z"},{"id":"c","name":"certbot","status":"active"}]}`))
+		default:
+			w.WriteHeader(403)
+		}
+	}))
+	defer srv.Close()
+	c := &config.Cloudflare{API: srv.URL, AccountID: "acct", TokenSecret: "t", TokenDays: status.Threshold{Warn: 30, Crit: 7}}
+	env := &Env{HTTP: srv.Client(), Secret: func(string) (string, bool) { return "x", true }}
+	if r := cfTokensCheck(c)(context.Background(), env); r.Status != OK || !strings.HasSuffix(r.Message, "; certbot never expires") {
+		t.Errorf("account tokens = %+v", r)
 	}
 }

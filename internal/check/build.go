@@ -299,4 +299,12 @@ func (b *builder) cloudflare() {
 	}
 	b.add(t, &Check{ID: "cloudflare.records." + fqdn(c.Zone), Name: "Cloudflare records for " + c.Zone,
 		Area: "cloud", Group: "Cloudflare", Secret: c.TokenSecret, Probes: []Probe{p}, Run: cloudflareCheck(c)})
+	daily := t
+	daily.Interval = config.Duration(24 * time.Hour)
+	tp := urlProbe(c.API, "HTTPS GET verify this token, then list API tokens (names and expiry only)")
+	if tp.Count = 2; c.AccountID != "" {
+		tp.Count = 4
+	}
+	b.add(daily, &Check{ID: "cloudflare.tokens", Name: "Cloudflare API token expiry", Area: "cloud", Group: "Cloudflare",
+		Secret: c.TokenSecret, Run: cfTokensCheck(c), Probes: []Probe{tp}})
 }

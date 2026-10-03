@@ -320,6 +320,9 @@ type Cloudflare struct {
 	Expected    []DNSRecord `json:"expected"`
 	// Extra name/type pairs where any record not in Expected counts as drift.
 	Watch []DNSRecord `json:"watch"`
+	// Tokens names the API tokens to watch for expiry; empty watches every active one.
+	Tokens    []string         `json:"tokens"`
+	TokenDays status.Threshold `json:"tokenDays"`
 }
 
 type DNSRecord struct {
@@ -456,6 +459,7 @@ func (c *Config) applyDefaults() {
 	if c.Cloudflare != nil {
 		def(&c.Cloudflare.TokenSecret, "cloudflare_token")
 		def(&c.Cloudflare.API, "https://api.cloudflare.com/client/v4")
+		c.Cloudflare.TokenDays = c.Cloudflare.TokenDays.Or(status.Threshold{Warn: 30, Crit: 7})
 	}
 	if hs := c.Hosts; hs != nil {
 		hs.Disk = hs.Disk.Or(status.Threshold{Warn: 80, Crit: 90})

@@ -65,7 +65,7 @@ Give each token the least it needs.
 | name | minimum scope |
 |---|---|
 | `linode_token` | Personal access token with Account: Read Only, Events: Read Only, Linodes: Read Only; everything else No Access |
-| `cloudflare_token` | Zone → DNS → Read, for the one zone. Add Zone → Zone → Read only if `cloudflare.zoneId` is not set |
+| `cloudflare_token` | Zone → DNS → Read, for the one zone. Add Zone → Zone → Read only if `cloudflare.zoneId` is not set. To watch other tokens add User → API Tokens → Read (Account → Account API Tokens → Read for account-owned tokens); it shows names and expiry, never token values |
 
 The secret names can be changed with `linode.tokenSecret` and
 `cloudflare.tokenSecret`.

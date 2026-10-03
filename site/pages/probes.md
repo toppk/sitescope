@@ -47,6 +47,7 @@ Per target, with the default intervals:
 | blocklists | one query per list to the local resolver | 1h | 24 per list and address |
 | Linode | HTTPS GETs to api.linode.com | 1h | 24 per check |
 | Cloudflare | HTTPS GET of the zone's records | 1h | 24 |
+| Cloudflare tokens | verify sitescope's token, list API tokens | 24h | 2 to 4 |
 
 Every interval can be changed per section; see
 [Configuration](configuration.html). Each check runs at a fixed phase
