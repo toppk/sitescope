@@ -31,7 +31,7 @@ outbound_network:
   - api.linode.com:443, api.cloudflare.com:443, api.certspotter.com:443
   - the heartbeat URL host :443
   - every http/tls target :443
-memory_estimate: 20          # MB hub RSS (19 MB with 70 checks; 141 checks peaked at 41 MB including unlock); MemoryMax 64M covers the 32 MiB scrypt spike
+memory_estimate: 20          # MB hub (14 MB steady with 141 checks; 41 MB peak during unlock); MemoryMax 64M covers the 32 MiB scrypt spike
 scheduled_jobs: none         # all scheduling is internal (open-relay probe and CT daily, RDAP 12h, digest daily)
 other_hostnames: none
 ```

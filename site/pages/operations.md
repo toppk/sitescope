@@ -45,7 +45,7 @@ and every check's first sighting is silent again.
 
 | process | measured | limit |
 |---|---|---|
-| hub | about 19 MB steady with 70 checks; with 141 checks, peaked at 41 MB over 40 minutes including an unlock | `GOMEMLIMIT=40MiB`, `MemoryMax=64M` |
+| hub | about 14 MB steady with 141 checks; peaks near 41 MB during an unlock | `GOMEMLIMIT=40MiB`, `MemoryMax=64M` |
 | agent | about 12 MB | `GOMEMLIMIT=20MiB`, `MemoryMax=32M` |
 
 Unlock briefly needs another 32 MiB for scrypt; the hub returns it to the
