@@ -74,8 +74,9 @@ open-relay probe ends the conversation before any message is sent.
   Messages and error text are never shown.
 - **One email per real change.** A failure must repeat before it counts,
   a recovery counts at once, and a flapping check is held back.
-- **Small.** The hub ran in about 20 MB with 70 checks; an agent runs in
-  about 12 MB. Between scheduled steps the hub sleeps.
+- **Small.** The hub peaks around 40 MB with 140 checks, unlock's scrypt
+  included; an agent runs in about 12 MB. Between scheduled steps the hub
+  sleeps.
 
 ## How it fits together
 
