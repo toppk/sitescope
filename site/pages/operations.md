@@ -10,7 +10,8 @@ description: "Running sitescope: unlocking after restarts, logs, state files, ba
 The hub starts locked and emails "sitescope started on HOST - vault
 LOCKED, run sitescope unlock". Until you do, the cloud checks show
 `locked` and the detail view is unavailable; everything else runs and
-alerts as usual.
+alerts as usual. Fifteen minutes later (`hub.lockedAfter`) `hub.vault`
+warns by email, in case the first one was missed.
 
 ```sh
 sitescope unlock
@@ -44,7 +45,7 @@ and every check's first sighting is silent again.
 
 | process | measured | limit |
 |---|---|---|
-| hub | about 19 MB with 70 checks | `GOMEMLIMIT=40MiB`, `MemoryMax=64M` |
+| hub | about 19 MB, measured with 70 checks | `GOMEMLIMIT=40MiB`, `MemoryMax=64M` |
 | agent | about 12 MB | `GOMEMLIMIT=20MiB`, `MemoryMax=32M` |
 
 Unlock briefly needs another 32 MiB for scrypt; the hub returns it to the
@@ -78,6 +79,15 @@ resolver. Blocklists need a recursive resolver that asks them directly.
 **A domain is unknown with "no RDAP server".**
 Its TLD isn't in the IANA bootstrap. Add its registry's RDAP base URL to
 `domains.servers`.
+
+**CT checks are unknown with "rate limited".**
+Cert Spotter allows 10 unauthenticated requests an hour. The check retries
+when Cert Spotter says to; a `certspotter_token` in the vault raises the
+limit.
+
+**`cloudflare.tokens` says a token is "not visible".**
+Sitescope's Cloudflare token can't list tokens. Give it API Tokens Read
+(User, or Account for account-owned tokens).
 
 **Try a check by hand.**
 

@@ -113,6 +113,7 @@ and the cache is cleared on `lock`.
 
 ```json
 {
+  "version": "1.1.0+5c6dc53",
   "time": "2026-10-01T12:00:00Z",
   "overall": "warn",
   "publicOverall": "warn",

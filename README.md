@@ -17,7 +17,7 @@ SiteScope. One static Go binary:
   state changes and a daily digest, pings a dead-man's-switch URL, and serves
   the status page on `127.0.0.1:8470` for a reverse proxy.
 - CLI: `unlock`, `lock`, `status`, `vault set|rm|list|set-password`, `check`,
-  `probes` (every destination the hub contacts, and how often).
+  `probes` (every destination the hub contacts, and how often), `version`.
 
 Nothing about the infrastructure is hardcoded: every target comes from the
 JSON config that the NixOS module renders from `services.sitescope.settings`.
@@ -54,8 +54,9 @@ change waits at least `renotifyInterval` (default 1h). A check that flaps back
 to the notified status sends nothing. The first sighting of a healthy check is
 silent. A check stuck in unknown for `unknownAfter` (default 1h) is reported
 once, unless its agent is down. A digest of everything not ok goes out once a day after
-`alerts.digestTime` (skipped on the day of a start after that time). Startup always sends "sitescope started on <host> - vault
-LOCKED, run sitescope unlock".
+`alerts.digestTime` (skipped on the day of a start after that time).
+Startup always sends "sitescope started on <host> - vault LOCKED, run
+sitescope unlock", and `hub.vault` warns if it is still locked 15 minutes later.
 
 Every `hub.heartbeatInterval` (default 1m) with no store errors the hub GETs
 `SITESCOPE_HEARTBEAT_URL`, e.g. a dead-man's-switch check with a matching
@@ -100,9 +101,10 @@ The first `vault set` creates the vault and asks for the new passphrase twice.
 |---|---|---|
 | `linode_token` | Linode personal access token | Account: Read Only, Events: Read Only, Linodes: Read Only; everything else No Access |
 | `cloudflare_token` | Cloudflare API token | Zone → DNS → Read, zone resources: Include → Specific zone → your zone. Add Zone → Zone → Read only if `cloudflare.zoneId` is not set (it's needed to look the zone up by name). To watch other tokens add User → API Tokens → Read (Account → Account API Tokens → Read for account-owned tokens); it shows names and expiry, never token values |
+| `certspotter_token` | optional Cert Spotter API key | raises the CT rate limit above 10 requests an hour |
 | `admin_password_hash` | written by `vault set-password` | |
 
-Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`).
+Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`, `ct.tokenSecret`).
 
 ## Web
 
@@ -111,14 +113,13 @@ Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`).
   from `labels`), `grouped` (folded into its service's light) or `private`
   (not shown, not counted). `public` is an ordered list of rules matched by
   area or check id glob; first match wins, and unmatched checks are public
-  under their area's name (so with no rules everything is listed). Messages, hostnames,
-  addresses and host software versions are never shown; the footer shows
-  sitescope's own version.
+  under their area's name (so with no rules everything is listed, by check
+  name). Messages are never shown; the footer shows sitescope's version.
 - `/detail`, `/detail/check?id=…`, `/api/status`: HTTP basic auth, user
   `admin`, password checked against the bcrypt hash in the vault. Read-only.
   Each check has its last message, retries, 30-day strip and history.
 - `/status.json`: the public page as JSON, same facts.
-- `/healthz`: 200 while the scheduler is ticking.
+- `/healthz`: 200 while the scheduler is on schedule.
 
 ## Configuration
 
@@ -194,7 +195,7 @@ Reference (all optional; defaults shown):
 | `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "1m"}` | every section and HTTP target takes the same four keys |
 | `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (nav link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"`, `concurrency: 8` | `hub.vault` warns once the vault has been locked `lockedAfter`; history keeps every status change plus one sample per `sampleEvery` |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (negative disables), `digestTime` (`"HH:MM"`, local time) | |
-| `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud |
+| `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud hub |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`, 0 disables a bound |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | .us and .co, missing from the IANA file, have built-in fallbacks |

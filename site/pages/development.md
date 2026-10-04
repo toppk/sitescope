@@ -1,7 +1,7 @@
 ---
 title: Development
 eyebrow: Reference
-lede: Go standard library plus four dependencies, built with Nix. Here is how the code is laid out and how to work on it.
+lede: Go standard library plus five dependencies, built with Nix. Here is how the code is laid out and how to work on it.
 description: Building, testing and the code layout of sitescope.
 ---
 
@@ -31,7 +31,7 @@ Dependencies: `filippo.io/age`, `golang.org/x/crypto` (bcrypt, terminal),
 | `internal/check` | expands config into checks, and every probe |
 | `internal/alert` | the per-check state machine: retries, notification due |
 | `internal/store` | bbolt history and states |
-| `internal/hub` | scheduler, mailer, web, control socket |
+| `internal/hub` | scheduler, mailer, web (templates and `static/`), control socket, `hub.vault` |
 | `internal/agent` | collector and its HTTP server |
 | `internal/report` | the agent's report |
 | `internal/vault`, `internal/secmem` | the age vault and locked memory |
@@ -44,8 +44,10 @@ Dependencies: `filippo.io/age`, `golang.org/x/crypto` (bcrypt, terminal),
    `applyDefaults`.
 2. Write the probe in `internal/check` as a pure `Eval…` function plus a
    thin network wrapper, and test the `Eval…` function.
-3. Register it in the builder with a stable id and an area.
-4. Document it in `site/pages/checks.md`.
+3. Register it in the builder with a stable id, an area, a group and its
+   `Probes` (what `sitescope probes` lists).
+4. Document it in `site/pages/checks.md`, and its traffic in
+   `site/pages/probes.md`.
 
 ## This site
 

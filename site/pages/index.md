@@ -12,7 +12,7 @@ hero-links:
   - label: See the checks
     href: checks.html
     kind: secondary
-description: sitescope is a small health monitor for a handful of NixOS hosts. Agents report host facts over WireGuard, a hub runs DNS, TLS, HTTP, mail, RDAP and cloud checks, emails state changes and serves a status page.
+description: sitescope is a small health monitor for a handful of NixOS hosts. Agents report host facts over WireGuard, a hub runs DNS, TLS, CT, HTTP, mail, RDAP and cloud checks, emails state changes and serves a status page.
 ---
 
 ## What sitescope does
@@ -29,7 +29,9 @@ needs to know when any of it goes wrong.
 
 Runs on every host and serves one JSON report on its WireGuard address:
 disk, memory, swap, load, failed units, whether a reboot is pending, how old
-nixpkgs is, WireGuard handshakes, the postfix queue and Knot zone status.
+nixpkgs is, WireGuard handshakes, the postfix queue and Knot zone status,
+plus CPU, pressure, disk and network counters. The same facts are on
+`/metrics` for Prometheus.
 :::
 
 ::: card
@@ -38,9 +40,10 @@ nixpkgs is, WireGuard handshakes, the postfix queue and Knot zone status.
 ### The hub
 
 Polls the agents and probes from the outside: DNS serials and delegation,
-domain expiry over RDAP, certificate lifetimes, HTTP status and latency,
-SMTP banners, an open-relay probe, blocklists, Linode billing and
-Cloudflare record drift.
+domain expiry over RDAP, certificate lifetimes and ALPN, Certificate
+Transparency logs, HTTP status and latency, SMTP banners, an open-relay
+probe, blocklists, Linode billing, Cloudflare record drift and API token
+expiry.
 :::
 
 ::: card
@@ -68,11 +71,11 @@ open-relay probe ends the conversation before any message is sent.
   and are zeroed on lock.
 - **You choose what the public page reveals.** Each check is listed under
   a label, folded into a service light, or kept off the page entirely.
-  Hostnames, addresses, versions and error text are never shown.
+  Messages and error text are never shown.
 - **One email per real change.** A failure must repeat before it counts,
   a recovery counts at once, and a flapping check is held back.
-- **Small.** The hub runs in about 20 MB with 70 checks; an agent in about
-  12 MB.
+- **Small.** The hub ran in about 20 MB with 70 checks; an agent runs in
+  about 12 MB. Between scheduled steps the hub sleeps.
 
 ## How it fits together
 

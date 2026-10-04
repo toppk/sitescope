@@ -39,7 +39,7 @@ target) can override it with the same four keys:
 |---|---|---|
 | `hub` | `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL`, `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"` (the scheduler's grid), `concurrency: 8` | `lockedAfter` is how long the vault may stay locked before `hub.vault` warns (negative disables); `refresh` is the page's reload interval in seconds; `concurrency` caps checks running at once |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"`, `digestTime` | `digestTime` is `"HH:MM"`, local time; unset means no digest |
-| `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`; `visibility` is `public`, `grouped` (default) or `private`; first match wins; unmatched checks are public under their area's name. See [visibility](web.html#visibility). Areas are `dns mail http tls domains hosts hygiene cloud` |
+| `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`; `visibility` is `public`, `grouped` (default) or `private`; first match wins; unmatched checks are public under their area's name. See [visibility](web.html#visibility). Areas are `dns mail http tls domains hosts hygiene cloud hub` |
 | `hosts` | `hosts: [{name, url, postfix, knot, wgIgnore}]`, `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | `delegation` is the expected NS names |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | |
@@ -59,7 +59,7 @@ From `services.sitescope.environmentFile`:
 | variable | used by |
 |---|---|
 | `SITESCOPE_AGENT_TOKEN` | the hub and every agent; the same value everywhere |
-| `SITESCOPE_HEARTBEAT_URL` | the hub; GET once a minute while healthy |
+| `SITESCOPE_HEARTBEAT_URL` | the hub; GET every `hub.heartbeatInterval` while healthy |
 | `SITESCOPE_CONFIG` | the CLI; config path when `-config` isn't given |
 
 ## Generating settings

@@ -13,8 +13,8 @@ description: Install sitescope with its NixOS module, deploy a hub and agents, a
   mail, and a **local resolver** on `127.0.0.1:53` for blocklist lookups
   (public resolvers are refused by most blocklists).
 - A **reverse proxy** for the status page, if it should be public.
-- Optional: a Linode and a Cloudflare read-only token, and a heartbeat URL
-  (healthchecks.io or similar).
+- Optional: a Linode and a Cloudflare read-only token, a Cert Spotter API
+  key, and a heartbeat URL (healthchecks.io or similar).
 
 ## Add the flake
 

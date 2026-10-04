@@ -2,7 +2,7 @@
 title: Agent report
 eyebrow: Reference
 lede: What an agent serves. A JSON report for the hub, and the same facts as Prometheus metrics, so anything that can reach wg0 and holds the token can read them too.
-description: The JSON schema of the sitescope agent's /v1/report endpoint.
+description: The JSON schema of the sitescope agent's /v1/report endpoint, and its Prometheus /metrics.
 ---
 
 ## Endpoint

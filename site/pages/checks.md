@@ -62,7 +62,8 @@ subdomains. Without a key Cert Spotter allows 10 requests an hour, so the
 domains are spread evenly over the day (9 domains run 2h40m apart), a
 restart keeps that spacing, and a refused request is retried when Cert
 Spotter's `Retry-After` says.
-A key in the vault as `certspotter_token` raises the limit.
+A key in the vault as `certspotter_token` raises the limit; it is used
+once the vault is unlocked, and the checks run without it until then.
 
 ```nix
 ct = {

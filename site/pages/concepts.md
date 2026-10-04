@@ -13,7 +13,7 @@ expands each section into flat checks, each with a stable id such as
 across restarts, so history follows them.
 
 Each check belongs to an **area**: `dns`, `domains`, `tls`, `http`, `mail`,
-`hosts`, `hygiene` or `cloud`. Each check also has a **visibility**:
+`hosts`, `hygiene`, `cloud` or `hub`. Each check also has a **visibility**:
 `public` (listed on the public page under a label), `grouped` (folded into
 a service light) or `private` (not on the public page at all). See
 [Status page and API](web.html#visibility).
@@ -93,7 +93,8 @@ that are due and sends them in one email.
   (15 minutes) later, `hub.vault` sends one WARN email, and a recovery
   email once you unlock.
 
-A failed send is retried on the next 30-second round.
+A failed send stays due and is retried on the hub's next pass, usually
+within a minute.
 
 ## Heartbeat
 

@@ -7,11 +7,14 @@ description: The threat model behind sitescope's vault, process hardening, publi
 
 ## What it holds
 
-- **Read-only API tokens** for the cloud provider and DNS host. Billing
-  and record contents, nothing that can change infrastructure.
+- **Read-only API tokens** for the cloud provider and DNS host, and
+  optionally a Cert Spotter key. Billing, record contents and token
+  metadata, nothing that can change infrastructure.
 - **The agent token**, which reads host facts over WireGuard only.
 - **A picture of the infrastructure**: hosts, addresses, versions, what
-  is failing. Useful to an attacker, so it isn't public.
+  is failing. Useful to an attacker, so the messages stay behind the
+  detail view's password, and the public page shows only the names and
+  statuses you allow.
 
 ## Rules it follows
 

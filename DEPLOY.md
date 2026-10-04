@@ -28,11 +28,11 @@ outbound_network:
   - 127.0.0.1:53 (local unbound, DNS blocklists)
   - 127.0.0.1:25 (alert mail)
   - TLD name servers :53, RDAP servers :443 (data.iana.org, rdap.nic.us, rdap.registry.co, ...)
-  - api.linode.com:443, api.cloudflare.com:443
+  - api.linode.com:443, api.cloudflare.com:443, api.certspotter.com:443
   - the heartbeat URL host :443
   - every http/tls target :443
 memory_estimate: 20          # MB hub RSS (measured 19 MB with 70 checks); MemoryMax 64M covers the 32 MiB scrypt spike at unlock
-scheduled_jobs: none         # all scheduling is internal (open-relay probe daily, RDAP 12h, digest daily)
+scheduled_jobs: none         # all scheduling is internal (open-relay probe and CT daily, RDAP 12h, digest daily)
 other_hostnames: none
 ```
 
@@ -52,6 +52,7 @@ privileges: CAP_NET_ADMIN (ambient, for `wg show`), groups postdrop and knot whe
 |---|---|
 | `linode_token` | Linode PAT: Account Read Only, Events Read Only, Linodes Read Only |
 | `cloudflare_token` | Cloudflare token: Zone / DNS / Read on the one zone (Zone / Zone / Read only if `cloudflare.zoneId` is unset). To watch other tokens add User → API Tokens → Read (Account → Account API Tokens → Read for account-owned tokens); it shows names and expiry, never token values |
+| `certspotter_token` | optional Cert Spotter API key (raises the CT rate limit) |
 | `admin_password_hash` | set with `sitescope vault set-password` |
 
 ## Wiring
@@ -85,4 +86,4 @@ services.sitescope = {
 After the first deploy: `sudo -u sitescope sitescope vault set linode_token`,
 `... cloudflare_token`, `... vault set-password`, then `sitescope unlock`.
 After every hub restart, run `sitescope unlock` again. The startup email is
-the reminder.
+the reminder, and `hub.vault` warns 15 minutes later if it is still locked.

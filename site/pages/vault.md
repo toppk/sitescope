@@ -12,7 +12,8 @@ description: How the sitescope vault stores, unlocks and protects API tokens, an
 | agent token | `environmentFile` | agents need it unattended, and it only reads host facts |
 | heartbeat URL | `environmentFile` | the hub needs it from startup |
 | Linode token | vault | reads billing and account details |
-| Cloudflare token | vault | reads DNS records |
+| Cloudflare token | vault | reads DNS records and token expiry |
+| Cert Spotter key | vault, optional | raises Cert Spotter's rate limit |
 | admin password hash | vault | protects the detail view |
 
 ## The file
@@ -30,7 +31,8 @@ Back it up. Without it you re-enter the tokens; history is optional.
 
 The hub always starts locked, and says so by email. Until it is unlocked,
 checks that need a secret report `locked` (which doesn't count against any
-light), and the detail view answers 503. Everything else runs.
+light), and the detail view answers 503. Everything else runs. If it is
+still locked after `hub.lockedAfter` (15 minutes), `hub.vault` warns.
 
 ```sh
 sitescope unlock      # passphrase from the terminal, over the control socket
@@ -66,6 +68,7 @@ Give each token the least it needs.
 |---|---|
 | `linode_token` | Personal access token with Account: Read Only, Events: Read Only, Linodes: Read Only; everything else No Access |
 | `cloudflare_token` | Zone → DNS → Read, for the one zone. Add Zone → Zone → Read only if `cloudflare.zoneId` is not set. To watch other tokens add User → API Tokens → Read (Account → Account API Tokens → Read for account-owned tokens); it shows names and expiry, never token values |
+| `certspotter_token` | optional: a Cert Spotter API key. Without it the CT checks run unauthenticated, 10 requests an hour |
 
-The secret names can be changed with `linode.tokenSecret` and
-`cloudflare.tokenSecret`.
+The secret names can be changed with `linode.tokenSecret`,
+`cloudflare.tokenSecret` and `ct.tokenSecret`.
