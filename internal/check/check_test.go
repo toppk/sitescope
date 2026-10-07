@@ -240,8 +240,16 @@ func TestExpiry(t *testing.T) {
 		Action string `json:"eventAction"`
 		Date   string `json:"eventDate"`
 	}{"expiration", "2026-11-10T04:00:00Z"})
-	if exp, ok := d.Expiry(); !ok || exp.Day() != 10 {
-		t.Errorf("rdap expiry = %v %v", exp, ok)
+	if exp, err := d.Expiry(); err != nil || exp.Day() != 10 {
+		t.Errorf("rdap expiry = %v %v", exp, err)
+	}
+	d.Events[0].Date = "2027-10-06" // .si
+	if exp, err := d.Expiry(); err != nil || exp.Format("2006-01-02") != "2027-10-06" {
+		t.Errorf("date-only rdap expiry = %v %v", exp, err)
+	}
+	d.Events[0].Date = "soon"
+	if _, err := d.Expiry(); err == nil || !strings.Contains(err.Error(), `"soon" not understood`) {
+		t.Errorf("bad date = %v", err)
 	}
 }
 

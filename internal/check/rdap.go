@@ -104,15 +104,20 @@ type rdapDomain struct {
 	Status []string `json:"status"`
 }
 
-func (d *rdapDomain) Expiry() (time.Time, bool) {
+// Expiry reads the expiration event; some registries (.si) give only a date.
+func (d *rdapDomain) Expiry() (time.Time, error) {
 	for _, e := range d.Events {
-		if e.Action == "expiration" {
-			if t, err := time.Parse(time.RFC3339, e.Date); err == nil {
-				return t, true
+		if e.Action != "expiration" {
+			continue
+		}
+		for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+			if t, err := time.Parse(layout, e.Date); err == nil {
+				return t, nil
 			}
 		}
+		return time.Time{}, fmt.Errorf("RDAP expiration date %q not understood", e.Date)
 	}
-	return time.Time{}, false
+	return time.Time{}, fmt.Errorf("RDAP response has no expiration event")
 }
 
 func (r *rdap) check(name string, days Threshold) func(context.Context, *Env) Result {
@@ -129,11 +134,13 @@ func (r *rdap) check(name string, days Threshold) func(context.Context, *Env) Re
 			return Critf("registry says %s is not registered", name)
 		}
 		if err != nil {
-			return Unknownf("RDAP: %v", err)
+			r := Unknownf("RDAP: %v", err)
+			r.RetryIn = time.Hour // a registry hiccup shouldn't cost a 12h interval
+			return r
 		}
-		exp, ok := d.Expiry()
-		if !ok {
-			return Unknownf("RDAP response has no expiration event")
+		exp, err := d.Expiry()
+		if err != nil {
+			return Unknownf("%v", err)
 		}
 		return EvalExpiry(exp, env.now(), days, "registration")
 	}
