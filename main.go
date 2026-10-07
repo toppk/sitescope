@@ -46,7 +46,7 @@ daemons:
   hub   -config FILE          poll agents, run probes, serve the status page, send mail
   agent -config FILE          serve this host's report on the wg0 address
 
-operator (on the hub host):
+operator (on the hub host; paths come from the hub config, -config or $SITESCOPE_CONFIG):
   unlock | lock | status      talk to the running hub over its control socket
   vault set NAME              store a secret (value from stdin)
   vault rm NAME               delete a secret
@@ -120,6 +120,17 @@ func loadConfig(fs *flag.FlagSet, args []string) (*config.Config, error) {
 	return config.Load(*path)
 }
 
+// hubConfig reads the hub's config for the operator commands; a missing default file means built-in paths.
+func hubConfig(fs *flag.FlagSet, path string) (*config.Config, error) {
+	explicit := os.Getenv("SITESCOPE_CONFIG") != ""
+	fs.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "config" })
+	cfg, err := config.Load(path)
+	if err != nil && !explicit && errors.Is(err, os.ErrNotExist) {
+		return config.Parse([]byte("{}"))
+	}
+	return cfg, err
+}
+
 func signalContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 }
@@ -179,8 +190,16 @@ func runCheck(args []string) error {
 
 func runControl(cmd string, args []string) error {
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
-	sock := fs.String("socket", "/run/sitescope/control.sock", "hub control socket")
+	cfgPath := fs.String("config", defaultConfig(), "hub config, for hub.controlSocket")
+	sock := fs.String("socket", "", "hub control socket (default hub.controlSocket)")
 	fs.Parse(args)
+	if *sock == "" {
+		cfg, err := hubConfig(fs, *cfgPath)
+		if err != nil {
+			return err
+		}
+		*sock = cfg.Hub.ControlSocket
+	}
 	var pass *secmem.Buf
 	n := 0
 	if cmd == "unlock" {
@@ -216,8 +235,16 @@ func runVault(args []string) error {
 	}
 	sub := args[0]
 	fs := flag.NewFlagSet("vault "+sub, flag.ExitOnError)
-	path := fs.String("vault", "/var/lib/sitescope/vault.age", "vault file")
+	cfgPath := fs.String("config", defaultConfig(), "hub config, for hub.vault")
+	path := fs.String("vault", "", "vault file (default hub.vault)")
 	fs.Parse(args[1:])
+	if *path == "" {
+		cfg, err := hubConfig(fs, *cfgPath)
+		if err != nil {
+			return err
+		}
+		*path = cfg.Hub.Vault
+	}
 	name := fs.Arg(0)
 	switch sub {
 	case "set", "rm":

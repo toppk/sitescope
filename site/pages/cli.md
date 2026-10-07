@@ -21,8 +21,10 @@ sitescope <command> [flags]
 
 ## Talking to the hub
 
-These connect to the control socket (`-socket`, default
-`/run/sitescope/control.sock`). You need to be in the admin group.
+These connect to the control socket: `-socket`, or else `hub.controlSocket`
+from the hub's config (`-config`, `$SITESCOPE_CONFIG` or
+`/etc/sitescope/config.json`), or else `/run/sitescope/control.sock`. You
+need to be in the admin group.
 
 `sitescope unlock`
 :   Asks for the vault passphrase on the terminal, without echo, and sends
@@ -40,8 +42,9 @@ These connect to the control socket (`-socket`, default
 
 ## The vault
 
-These read and write the vault file directly (`-vault`, default
-`/var/lib/sitescope/vault.age`), so run them as the hub user:
+These read and write the vault file directly: `-vault`, or else `hub.vault`
+from the hub's config (found as above), or else
+`/var/lib/sitescope/vault.age`. Run them as the hub user:
 `sudo -u sitescope sitescope vault …`. Each asks for the passphrase.
 
 `sitescope vault set NAME`

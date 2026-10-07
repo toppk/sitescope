@@ -31,7 +31,8 @@ it and appends the git revision: the flake as `X.Y.Z+<rev>`, a plain
 go build -ldflags "-X main.version=$(cat VERSION)+$(git rev-parse --short HEAD)" .
 ```
 
-A release: bump `VERSION`, `git add -A`, `nix flake check`, check
+A release: bump `VERSION`, write `release-notes/X.Y.Z.md` from
+`release-notes/TEMPLATE.md`, `git add -A`, `nix flake check`, check
 `nix build && ./result/bin/sitescope version`, commit, push, and hand infra
 the commit to pin. Tags are optional; nothing reads them.
 
