@@ -9,6 +9,7 @@ buildGoModule {
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
+      ../VERSION
       ../go.mod
       ../go.sum
       ../main.go

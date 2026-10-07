@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,7 +28,17 @@ import (
 	"github.com/toppk/sitescope/internal/vault"
 )
 
-var version = "1.1.0+dev"
+//go:embed VERSION
+var versionFile string
+
+// version is set with -X main.version=X.Y.Z+rev; plain builds fall back to VERSION+dev.
+var version string
+
+func init() {
+	if version == "" {
+		version = strings.TrimSpace(versionFile) + "+dev"
+	}
+}
 
 const usage = `usage: sitescope <command> [flags]
 

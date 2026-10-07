@@ -21,6 +21,20 @@ build prints the new one.
 Dependencies: `filippo.io/age`, `golang.org/x/crypto` (bcrypt, terminal),
 `golang.org/x/sys`, `github.com/miekg/dns` and `go.etcd.io/bbolt`.
 
+## Versions and releases
+
+The release number lives in `VERSION` and nowhere else. Every build reads
+it and appends the git revision: the flake as `X.Y.Z+<rev>`, a plain
+`go build` as `X.Y.Z+dev`. To match the flake outside Nix:
+
+```sh
+go build -ldflags "-X main.version=$(cat VERSION)+$(git rev-parse --short HEAD)" .
+```
+
+A release: bump `VERSION`, `git add -A`, `nix flake check`, check
+`nix build && ./result/bin/sitescope version`, commit, push, and hand infra
+the commit to pin. Tags are optional; nothing reads them.
+
 ## Layout
 
 | path | what |
