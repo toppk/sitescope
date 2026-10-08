@@ -41,9 +41,9 @@ the commit to pin. Tags are optional; nothing reads them.
 | path | what |
 |---|---|
 | `main.go` | subcommands |
-| `internal/config` | the JSON configuration and its defaults |
+| `internal/config` | the JSON configuration: hub, agent, alerts, public, and the section registry |
 | `internal/status` | statuses and thresholds |
-| `internal/check` | expands config into checks, and every probe |
+| `internal/check` | the check modules: each section's settings, defaults, checks and probes |
 | `internal/alert` | the per-check state machine: retries, notification due |
 | `internal/store` | bbolt history and states |
 | `internal/hub` | scheduler, mailer, web (templates and `static/`), control socket, `hub.vault` |
@@ -55,12 +55,23 @@ the commit to pin. Tags are optional; nothing reads them.
 
 ## Adding a check
 
-1. Add its settings to `internal/config` with defaults in
-   `applyDefaults`.
-2. Write the probe in `internal/check` as a pure `Eval…` function plus a
-   thin network wrapper, and test the `Eval…` function.
-3. Register it in the builder with a stable id, an area, a group and its
-   `Probes` (what `sitescope probes` lists).
+Each kind of check is a module in `internal/check`: one file holds its
+config section type, and that type has three methods.
+
+- `Defaults(*config.Config)` fills in defaults. It may read the hub settings
+  and other sections.
+- `Validate()` rejects bad settings.
+- `build(*builder)` adds checks.
+
+To add one:
+
+1. Write the section type and its methods, and register its top-level key
+   in the `init` in `build.go`. Registration order is build order.
+2. Write the probe as a pure `Eval…` function plus a thin network wrapper,
+   and test the `Eval…` function.
+3. Give each check a stable id, an area, a group and its `Probes` (what
+   `sitescope probes` lists). Other code reads a section with
+   `config.Get[*check.T](cfg)`.
 4. Document it in `site/pages/checks.md`, and its traffic in
    `site/pages/probes.md`.
 

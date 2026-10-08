@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/toppk/sitescope/internal/agent"
+	"github.com/toppk/sitescope/internal/check"
 	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/hub"
 	"github.com/toppk/sitescope/internal/secmem"
@@ -161,8 +162,8 @@ func runAgent(args []string) error {
 	ctx, cancel := signalContext()
 	defer cancel()
 	peers := cfg.Agent.WGPeers
-	if len(peers) == 0 && cfg.Hosts != nil {
-		peers = cfg.Hosts.WGPeers
+	if hs := config.Get[*check.Hosts](cfg); len(peers) == 0 && hs != nil {
+		peers = hs.WGPeers
 	}
 	s := &agent.Server{Collector: &agent.Collector{Cfg: cfg.Agent}, Token: os.Getenv("SITESCOPE_AGENT_TOKEN"),
 		Version: version, Peers: peers}

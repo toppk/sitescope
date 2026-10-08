@@ -11,6 +11,48 @@ import (
 	"github.com/toppk/sitescope/internal/config"
 )
 
+type Linode struct {
+	config.Timing
+	TokenSecret string           `json:"tokenSecret"`
+	API         string           `json:"api"`
+	Instances   []LinodeInstance `json:"instances"`
+	Uninvoiced  Threshold        `json:"uninvoiced"`
+	Transfer    Threshold        `json:"transfer"`
+	EventWindow config.Duration  `json:"eventWindow"`
+}
+
+type LinodeInstance struct {
+	Name string `json:"name"`
+	ID   int    `json:"id"`
+}
+
+func (l *Linode) Defaults(*config.Config) {
+	config.Def(&l.TokenSecret, "linode_token")
+	config.Def(&l.API, "https://api.linode.com/v4")
+	l.Transfer = l.Transfer.Or(Threshold{Warn: 80, Crit: 95})
+	if l.EventWindow == 0 {
+		l.EventWindow = config.Duration(24 * time.Hour)
+	}
+}
+
+func (l *Linode) Validate() error { return nil }
+
+func (l *Linode) build(b *builder) {
+	t := l.Timing.Merge(config.Timing{Interval: config.Duration(time.Hour), Timeout: config.Duration(30 * time.Second)})
+	api := &linodeAPI{base: strings.TrimSuffix(l.API, "/"), secret: l.TokenSecret}
+	add := func(id, name string, run func(context.Context, *Env) Result) {
+		b.add(t, &Check{ID: id, Name: name, Area: "cloud", Group: "Linode", Secret: l.TokenSecret,
+			Probes: []Probe{urlProbe(l.API, "HTTPS GET, read-only token")}, Run: run})
+	}
+	add("linode.account", "Linode account balance", api.account(l))
+	add("linode.transfer", "Linode network transfer", api.transfer(l))
+	add("linode.maintenance", "Linode maintenance and notices", api.maintenance())
+	add("linode.events", "Linode recent events", api.events(l))
+	for _, in := range l.Instances {
+		add("linode.instance."+in.Name, "Linode instance "+in.Name, api.instance(in))
+	}
+}
+
 type linodeAPI struct {
 	base   string
 	secret string
@@ -45,7 +87,7 @@ type page[T any] struct {
 	Data []T `json:"data"`
 }
 
-func (l *linodeAPI) account(cfg *config.Linode) func(context.Context, *Env) Result {
+func (l *linodeAPI) account(cfg *Linode) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
 		var acct LinodeAccount
 		if err := l.get(ctx, env, "/account", nil, &acct); err != nil {
@@ -95,7 +137,7 @@ type LinodeTransfer struct {
 	Used     float64 `json:"used"`
 }
 
-func (l *linodeAPI) transfer(cfg *config.Linode) func(context.Context, *Env) Result {
+func (l *linodeAPI) transfer(cfg *Linode) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
 		var t LinodeTransfer
 		if err := l.get(ctx, env, "/account/transfer", nil, &t); err != nil {
@@ -167,7 +209,7 @@ type LinodeEvent struct {
 	} `json:"entity"`
 }
 
-func (l *linodeAPI) events(cfg *config.Linode) func(context.Context, *Env) Result {
+func (l *linodeAPI) events(cfg *Linode) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
 		since := env.now().UTC().Add(-cfg.EventWindow.D()).Format("2006-01-02T15:04:05")
 		filter, _ := json.Marshal(map[string]any{"created": map[string]string{"+gte": since}})
@@ -200,7 +242,7 @@ func EvalEvents(events []LinodeEvent, window time.Duration) Result {
 	return Okf("%d routine events in the last %s", len(events), fmtDuration(window))
 }
 
-func (l *linodeAPI) instance(in config.LinodeInstance) func(context.Context, *Env) Result {
+func (l *linodeAPI) instance(in LinodeInstance) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
 		var v struct {
 			Label  string `json:"label"`

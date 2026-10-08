@@ -14,6 +14,54 @@ import (
 	"github.com/toppk/sitescope/internal/status"
 )
 
+type Cloudflare struct {
+	config.Timing
+	TokenSecret string      `json:"tokenSecret"`
+	API         string      `json:"api"`
+	Zone        string      `json:"zone"`
+	ZoneID      string      `json:"zoneId"`
+	AccountID   string      `json:"accountId"` // narrows the zone lookup when the token sees several accounts
+	Expected    []DNSRecord `json:"expected"`
+	// Extra name/type pairs where any record not in Expected counts as drift.
+	Watch []DNSRecord `json:"watch"`
+	// Tokens names the API tokens to watch for expiry; empty watches every active one.
+	Tokens    []string  `json:"tokens"`
+	TokenDays Threshold `json:"tokenDays"`
+}
+
+type DNSRecord struct {
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Content  string `json:"content"`
+	Priority *int   `json:"priority,omitempty"`
+}
+
+func (c *Cloudflare) Defaults(*config.Config) {
+	config.Def(&c.TokenSecret, "cloudflare_token")
+	config.Def(&c.API, "https://api.cloudflare.com/client/v4")
+	c.TokenDays = c.TokenDays.Or(Threshold{Warn: 30, Crit: 7})
+}
+
+func (c *Cloudflare) Validate() error { return nil }
+
+func (c *Cloudflare) build(b *builder) {
+	t := c.Timing.Merge(config.Timing{Interval: config.Duration(time.Hour), Timeout: config.Duration(30 * time.Second)})
+	p := urlProbe(c.API, "HTTPS GET DNS records, read-only token")
+	if c.ZoneID == "" {
+		p.What, p.Count = "HTTPS GET zone by name, then its DNS records, read-only token", 2
+	}
+	b.add(t, &Check{ID: "cloudflare.records." + fqdn(c.Zone), Name: "Cloudflare records for " + c.Zone,
+		Area: "cloud", Group: "Cloudflare", Secret: c.TokenSecret, Probes: []Probe{p}, Run: cloudflareCheck(c)})
+	daily := t
+	daily.Interval = config.Duration(24 * time.Hour)
+	tp := urlProbe(c.API, "HTTPS GET verify this token, then list API tokens (names and expiry only)")
+	if tp.Count = 2; c.AccountID != "" {
+		tp.Count = 4
+	}
+	b.add(daily, &Check{ID: "cloudflare.tokens", Name: "Cloudflare API token expiry", Area: "cloud", Group: "Cloudflare",
+		Secret: c.TokenSecret, Run: cfTokensCheck(c), Probes: []Probe{tp}})
+}
+
 type cfRecord struct {
 	Type     string `json:"type"`
 	Name     string `json:"name"`
@@ -21,7 +69,7 @@ type cfRecord struct {
 	Priority *int   `json:"priority"`
 }
 
-func cloudflareCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
+func cloudflareCheck(c *Cloudflare) func(context.Context, *Env) Result {
 	base := strings.TrimSuffix(c.API, "/")
 	return func(ctx context.Context, env *Env) Result {
 		token, ok := env.Secret(c.TokenSecret)
@@ -48,7 +96,7 @@ func cloudflareCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
 			}
 			zoneID = z.Result[0].ID
 		}
-		var all []config.DNSRecord
+		var all []DNSRecord
 		for pg := 1; pg < 50; pg++ {
 			var r struct {
 				Result     []cfRecord `json:"result"`
@@ -61,7 +109,7 @@ func cloudflareCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
 				return Unknownf("records: %v", err)
 			}
 			for _, x := range r.Result {
-				all = append(all, config.DNSRecord{Type: x.Type, Name: x.Name, Content: x.Content, Priority: x.Priority})
+				all = append(all, DNSRecord{Type: x.Type, Name: x.Name, Content: x.Content, Priority: x.Priority})
 			}
 			if pg >= r.ResultInfo.TotalPages {
 				break
@@ -71,7 +119,7 @@ func cloudflareCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
 	}
 }
 
-func normRecord(r config.DNSRecord) string {
+func normRecord(r DNSRecord) string {
 	t := strings.ToUpper(r.Type)
 	content := strings.TrimSpace(r.Content)
 	switch t {
@@ -93,8 +141,8 @@ func normRecord(r config.DNSRecord) string {
 
 // CompareRecords checks every expected record exists, and that the watched
 // name/type pairs (the expected ones plus extra) hold nothing else.
-func CompareRecords(actual, expected, watch []config.DNSRecord) Result {
-	key := func(r config.DNSRecord) string { return strings.ToUpper(r.Type) + " " + fqdn(r.Name) }
+func CompareRecords(actual, expected, watch []DNSRecord) Result {
+	key := func(r DNSRecord) string { return strings.ToUpper(r.Type) + " " + fqdn(r.Name) }
 	watched := map[string]bool{}
 	want := map[string]bool{}
 	for _, r := range expected {
@@ -150,7 +198,7 @@ type CFToken struct {
 	ExpiresOn string `json:"expires_on"`
 }
 
-func cfTokensCheck(c *config.Cloudflare) func(context.Context, *Env) Result {
+func cfTokensCheck(c *Cloudflare) func(context.Context, *Env) Result {
 	base := strings.TrimSuffix(c.API, "/")
 	return func(ctx context.Context, env *Env) Result {
 		token, ok := env.Secret(c.TokenSecret)

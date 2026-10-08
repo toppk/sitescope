@@ -14,11 +14,66 @@ import (
 	"github.com/toppk/sitescope/internal/report"
 )
 
-func (b *builder) hosts() {
-	hs := b.cfg.Hosts
-	if hs == nil {
-		return
+type Hosts struct {
+	config.Timing
+	Hosts       []Host            `json:"hosts"`
+	WGPeers     map[string]string `json:"wgPeers"`
+	Disk        Threshold         `json:"disk"`
+	Memory      Threshold         `json:"memory"`
+	Swap        Threshold         `json:"swap"`
+	Load        Threshold         `json:"load"`
+	WGHandshake Threshold         `json:"wgHandshake"`
+	QueueSize   Threshold         `json:"queueSize"`
+	QueueAge    Threshold         `json:"queueAge"`
+	KnotExpiry  Threshold         `json:"knotExpiry"`
+	NixpkgsAge  Threshold         `json:"nixpkgsAge"`
+	// Rates are computed over RateWindow from the agents' counters.
+	RateWindow  config.Duration `json:"rateWindow"`
+	CPU         Threshold       `json:"cpu"`         // percent busy
+	MemoryStall Threshold       `json:"memoryStall"` // percent of time some task waited on memory
+	SwapIn      Threshold       `json:"swapIn"`      // pages per second
+	DiskBusy    Threshold       `json:"diskBusy"`    // percent of time a device was busy
+	IOStall     Threshold       `json:"ioStall"`     // percent of time some task waited on I/O
+	NetErrors   Threshold       `json:"netErrors"`   // errors and drops per second
+	NetMbps     Threshold       `json:"netMbps"`     // off unless set
+	UnitMemory  Threshold       `json:"unitMemory"`  // percent of a service's MemoryMax
+	KnotZones   []string        `json:"knotZones"`
+}
+
+type Host struct {
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	Postfix bool   `json:"postfix"`
+	Knot    bool   `json:"knot"`
+	// WireGuard peers to ignore (by name or key), e.g. a roaming peer that may sleep.
+	WGIgnore []string `json:"wgIgnore"`
+}
+
+func (hs *Hosts) Defaults(*config.Config) {
+	hs.Disk = hs.Disk.Or(Threshold{Warn: 80, Crit: 90})
+	hs.Memory = hs.Memory.Or(Threshold{Warn: 90, Crit: 97})
+	hs.Swap = hs.Swap.Or(Threshold{Warn: 60, Crit: 90})
+	hs.Load = hs.Load.Or(Threshold{Warn: 2, Crit: 4})
+	hs.WGHandshake = hs.WGHandshake.Or(Threshold{Warn: 600, Crit: 3600})
+	hs.QueueSize = hs.QueueSize.Or(Threshold{Warn: 20, Crit: 200})
+	hs.QueueAge = hs.QueueAge.Or(Threshold{Warn: 3600, Crit: 4 * 3600})
+	hs.KnotExpiry = hs.KnotExpiry.Or(Threshold{Warn: 14 * 86400, Crit: 3 * 86400})
+	hs.NixpkgsAge = hs.NixpkgsAge.Or(Threshold{Warn: 30, Crit: 90})
+	if hs.RateWindow == 0 {
+		hs.RateWindow = config.Duration(5 * time.Minute)
 	}
+	hs.CPU = hs.CPU.Or(Threshold{Warn: 85, Crit: 95})
+	hs.MemoryStall = hs.MemoryStall.Or(Threshold{Warn: 10, Crit: 30})
+	hs.SwapIn = hs.SwapIn.Or(Threshold{Warn: 100, Crit: 1000})
+	hs.DiskBusy = hs.DiskBusy.Or(Threshold{Warn: 80, Crit: 95})
+	hs.IOStall = hs.IOStall.Or(Threshold{Warn: 25, Crit: 50})
+	hs.NetErrors = hs.NetErrors.Or(Threshold{Warn: 1, Crit: 10})
+	hs.UnitMemory = hs.UnitMemory.Or(Threshold{Warn: 85, Crit: 95})
+}
+
+func (hs *Hosts) Validate() error { return nil }
+
+func (hs *Hosts) build(b *builder) {
 	t := hs.Timing.Merge(config.Timing{Interval: config.Duration(time.Minute), Timeout: config.Duration(10 * time.Second)})
 	interval := t.Merge(b.cfg.Defaults).Interval.D()
 	stale := max(3*interval, 5*time.Minute)
@@ -26,8 +81,8 @@ func (b *builder) hosts() {
 	derived := t
 	derived.Retries = new(int)
 	knotZones := hs.KnotZones
-	if len(knotZones) == 0 && b.cfg.DNS != nil {
-		knotZones = b.cfg.DNS.Zones
+	if d := config.Get[*DNS](b.cfg); len(knotZones) == 0 && d != nil {
+		knotZones = d.Zones
 	}
 	for _, h := range hs.Hosts {
 		agentID := "host." + h.Name + ".agent"
@@ -71,7 +126,7 @@ func (b *builder) hosts() {
 	}
 }
 
-func agentCheck(h config.Host) func(context.Context, *Env) Result {
+func agentCheck(h Host) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
 		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimSuffix(h.URL, "/")+"/v1/report", nil)
 		if err != nil {

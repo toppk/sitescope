@@ -301,12 +301,12 @@ func TestLinodeAndCloudflare(t *testing.T) {
 	}
 
 	p10 := 10
-	expected := []config.DNSRecord{
+	expected := []DNSRecord{
 		{Type: "A", Name: "da.example.org", Content: "192.0.2.1"},
 		{Type: "MX", Name: "example.org", Content: "da.example.org.", Priority: &p10},
 		{Type: "TXT", Name: "example.org", Content: `"v=spf1 mx ~all"`},
 	}
-	actual := []config.DNSRecord{
+	actual := []DNSRecord{
 		{Type: "A", Name: "da.example.org", Content: "192.0.2.1"},
 		{Type: "MX", Name: "example.org", Content: "da.example.org", Priority: &p10},
 		{Type: "TXT", Name: "example.org", Content: "v=spf1 mx ~all"},
@@ -315,14 +315,14 @@ func TestLinodeAndCloudflare(t *testing.T) {
 	if got := CompareRecords(actual, expected, nil); got.Status != OK {
 		t.Errorf("records = %+v", got)
 	}
-	drift := append(actual, config.DNSRecord{Type: "A", Name: "da.example.org", Content: "192.0.2.66"})
+	drift := append(actual, DNSRecord{Type: "A", Name: "da.example.org", Content: "192.0.2.66"})
 	if got := CompareRecords(drift, expected, nil); got.Status != Warn || !strings.Contains(got.Message, "192.0.2.66") {
 		t.Errorf("extra record = %+v", got)
 	}
 	if got := CompareRecords(actual[1:], expected, nil); got.Status != Crit {
 		t.Errorf("missing record = %+v", got)
 	}
-	watch := []config.DNSRecord{{Type: "A", Name: "www.example.org"}}
+	watch := []DNSRecord{{Type: "A", Name: "www.example.org"}}
 	if got := CompareRecords(actual, expected, watch); got.Status != Warn {
 		t.Errorf("watched name with no expected records = %+v", got)
 	}
@@ -418,7 +418,7 @@ func fakeSMTP(t *testing.T, rcptReply string) (string, int) {
 func TestSMTPProbes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cfg := &config.OpenRelay{Helo: "probe.example", From: "a@example.com", To: "b@example.net", Expect: 554}
+	cfg := &OpenRelay{Helo: "probe.example", From: "a@example.com", To: "b@example.net", Expect: 554}
 	ip, port := fakeSMTP(t, "554 5.7.1 Relay access denied")
 	if got := openRelayCheck(ip, port, cfg)(ctx, nil); got.Status != OK {
 		t.Errorf("closed relay = %+v", got)
@@ -427,11 +427,11 @@ func TestSMTPProbes(t *testing.T) {
 	if got := openRelayCheck(ip, port, cfg)(ctx, nil); got.Status != Crit {
 		t.Errorf("open relay = %+v", got)
 	}
-	got := bannerCheck(ip, config.MailServer{Port: port, Expect: "mx.example.org"}, Threshold{Warn: 3})(ctx, nil)
+	got := bannerCheck(ip, MailServer{Port: port, Expect: "mx.example.org"}, Threshold{Warn: 3})(ctx, nil)
 	if got.Status != OK {
 		t.Errorf("banner = %+v", got)
 	}
-	got = bannerCheck(ip, config.MailServer{Port: port, Expect: "other.example"}, Threshold{Warn: 3})(ctx, nil)
+	got = bannerCheck(ip, MailServer{Port: port, Expect: "other.example"}, Threshold{Warn: 3})(ctx, nil)
 	if got.Status != Warn {
 		t.Errorf("banner mismatch = %+v", got)
 	}
@@ -563,10 +563,11 @@ func TestCTRateLimit(t *testing.T) {
 			w.WriteHeader(429)
 			return
 		}
-		w.Write([]byte(`[{"cert_sha256":"ab","dns_names":["www.ok.example"],"issuer":{"friendly_name":"Let's Encrypt"},"not_before":"2026-10-01T00:00:00Z"}]`))
+		nb := time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+		w.Write([]byte(`[{"cert_sha256":"ab","dns_names":["www.ok.example"],"issuer":{"friendly_name":"Let's Encrypt"},"not_before":"` + nb + `"}]`))
 	}))
 	defer srv.Close()
-	cfg := &config.CT{Issuers: []string{"Let's Encrypt"}, Recent: config.Duration(7 * 24 * time.Hour)}
+	cfg := &CT{Issuers: []string{"Let's Encrypt"}, Recent: config.Duration(7 * 24 * time.Hour)}
 	api := &ctAPI{base: srv.URL}
 	env := &Env{HTTP: srv.Client()}
 	if r := ctCheck(api, "limited.example", cfg)(context.Background(), env); r.Status != Unknown || r.RetryIn != 2*time.Minute {
@@ -625,7 +626,7 @@ func TestCFTokensCheck(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c := &config.Cloudflare{API: srv.URL, AccountID: "acct", TokenSecret: "t", TokenDays: status.Threshold{Warn: 30, Crit: 7}}
+	c := &Cloudflare{API: srv.URL, AccountID: "acct", TokenSecret: "t", TokenDays: status.Threshold{Warn: 30, Crit: 7}}
 	env := &Env{HTTP: srv.Client(), Secret: func(string) (string, bool) { return "x", true }}
 	if r := cfTokensCheck(c)(context.Background(), env); r.Status != OK || !strings.HasSuffix(r.Message, "; certbot never expires") {
 		t.Errorf("account tokens = %+v", r)

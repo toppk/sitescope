@@ -10,8 +10,68 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toppk/sitescope/internal/config"
+
 	"github.com/miekg/dns"
 )
+
+type DNS struct {
+	config.Timing
+	Zones           []string            `json:"zones"`
+	Primary         string              `json:"primary"`
+	Servers         []NameServer        `json:"servers"`
+	Delegation      []string            `json:"delegation"`
+	DelegationZones []string            `json:"delegationZones"`
+	PublicResolver  string              `json:"publicResolver"`
+	Resolve         map[string][]string `json:"resolve"`
+}
+
+type NameServer struct {
+	Name  string   `json:"name"`
+	Addrs []string `json:"addrs"`
+}
+
+func (d *DNS) Defaults(*config.Config) { config.Def(&d.PublicResolver, "1.1.1.1") }
+
+func (d *DNS) Validate() error { return nil }
+
+func (d *DNS) build(b *builder) {
+	t := d.Timing
+	ps := &serials{}
+	if d.Primary != "" {
+		b.add(t, &Check{ID: "dns.primary", Name: "Primary answers for all zones", Area: "dns", Group: "Primary",
+			Probes: []Probe{{d.Primary, "53/udp", "SOA query per zone", len(d.Zones)}},
+			Run:    primaryCheck(d.Primary, d.Zones)})
+	}
+	for _, z := range d.Zones {
+		z = fqdn(z)
+		for si, s := range d.Servers {
+			for ai, a := range s.Addrs {
+				p := []Probe{{a, "53/udp", "SOA query", 1}}
+				// one serial query per zone per round; the cache serves the others
+				if d.Primary != "" && si == 0 && ai == 0 {
+					p = append(p, Probe{d.Primary, "53/udp", "SOA query (serial for the secondaries to match)", 1})
+				}
+				b.add(t, &Check{ID: fmt.Sprintf("dns.soa.%s.%s.%s", z, s.Name, family(a)),
+					Name: fmt.Sprintf("SOA %s on %s (%s)", z, s.Name, family(a)), Area: "dns", Group: s.Name,
+					Probes: p, Run: soaCheck(z, a, d.Primary, ps)})
+			}
+		}
+		if len(d.Delegation) > 0 {
+			b.add(config.Timing{Interval: config.Duration(time.Hour)}.Merge(t), &Check{
+				ID: "dns.delegation." + z, Name: "TLD delegation " + z, Area: "dns", Group: "Delegation",
+				Probes: []Probe{{d.PublicResolver, "53/udp", "recursive NS and A lookups", 2},
+					{"a name server of the parent zone", "53/udp", "NS query", 1}},
+				Run: delegationCheck(z, d.Delegation, d.PublicResolver)})
+		}
+	}
+	for name, want := range d.Resolve {
+		name = fqdn(name)
+		b.add(t, &Check{ID: "dns.resolve." + name, Name: "Public resolution of " + name, Area: "dns", Group: "Resolution",
+			Probes: []Probe{{d.PublicResolver, "53/udp", "recursive A and AAAA lookups", 2}},
+			Run:    resolveCheck(name, want, d.PublicResolver)})
+	}
+}
 
 func hostport(addr string) string {
 	if _, _, err := net.SplitHostPort(addr); err == nil {

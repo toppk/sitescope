@@ -100,7 +100,7 @@ func (h *Hub) Run(ctx context.Context) error {
 	defer h.store.Close()
 	defer h.vault.Lock()
 	slog.Info("hub starting", "checks", len(h.checks), "listen", h.cfg.Hub.Listen)
-	if h.env.AgentToken == "" && h.cfg.Hosts != nil {
+	if h.env.AgentToken == "" && config.Get[*check.Hosts](h.cfg) != nil {
 		slog.Warn("SITESCOPE_AGENT_TOKEN is not set; agent polls will fail")
 	}
 	h.vault.onChange = func() { h.wakeSecretChecks() }

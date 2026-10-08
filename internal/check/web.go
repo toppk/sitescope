@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,97 @@ import (
 
 	"github.com/toppk/sitescope/internal/config"
 )
+
+type TLS struct {
+	config.Timing
+	Targets []TLSTarget `json:"targets"`
+	Days    Threshold   `json:"days"`
+}
+
+type TLSTarget struct {
+	Name     string   `json:"name"`
+	Host     string   `json:"host"`
+	Port     int      `json:"port"`
+	StartTLS string   `json:"starttls"`
+	Families []string `json:"families"`
+	ALPN     string   `json:"alpn"` // protocol the server must choose, e.g. "h2"
+}
+
+type HTTP struct {
+	config.Timing
+	Targets []HTTPTarget `json:"targets"`
+}
+
+type HTTPTarget struct {
+	Name         string    `json:"name"`
+	URL          string    `json:"url"`
+	ExpectStatus int       `json:"expectStatus"`
+	Latency      Threshold `json:"latency"`
+	config.Timing
+}
+
+func (c *TLS) Defaults(*config.Config) { c.Days = c.Days.Or(Threshold{Warn: 20, Crit: 7}) }
+
+func (c *TLS) Validate() error { return nil }
+
+func (c *HTTP) Defaults(*config.Config) {}
+
+func (c *HTTP) Validate() error { return nil }
+
+func (c *TLS) build(b *builder) {
+	t := c.Timing.Merge(config.Timing{Interval: config.Duration(6 * time.Hour)})
+	for _, tg := range c.Targets {
+		port := tg.Port
+		if port == 0 {
+			port = map[string]int{"smtp": 25}[tg.StartTLS]
+			if port == 0 {
+				port = 443
+			}
+		}
+		fams := tg.Families
+		if len(fams) == 0 {
+			fams = []string{"4", "6"}
+		}
+		host := tg.Host
+		if host == "" {
+			host = tg.Name
+		}
+		name := tg.Name
+		if name == "" {
+			name = host
+		}
+		for _, f := range fams {
+			proto := "https"
+			if tg.StartTLS != "" {
+				proto = tg.StartTLS
+			}
+			what := "TLS handshake"
+			if tg.ALPN != "" {
+				what += " offering ALPN " + tg.ALPN + " and http/1.1"
+			}
+			if tg.StartTLS != "" {
+				what = "EHLO, STARTTLS, handshake, QUIT"
+			}
+			b.add(t, &Check{ID: fmt.Sprintf("tls.%s.%s.%d.v%s", name, proto, port, f),
+				Name: fmt.Sprintf("Certificate %s (%s:%d, IPv%s)", name, proto, port, f), Area: "tls", Group: name,
+				Probes: []Probe{{host + " (IPv" + f + ")", fmt.Sprintf("%d/tcp", port), what, 1}},
+				Run:    tlsCheck(host, port, "tcp"+f, tg.StartTLS, tg.ALPN, c.Days)})
+		}
+	}
+}
+
+func (c *HTTP) build(b *builder) {
+	t := c.Timing.Merge(config.Timing{Interval: config.Duration(time.Minute)})
+	for _, tg := range c.Targets {
+		name := tg.Name
+		if name == "" {
+			name = tg.URL
+		}
+		b.add(tg.Timing.Merge(t), &Check{ID: "http." + name, Name: "HTTP " + tg.URL, Area: "http",
+			Probes: []Probe{urlProbe(tg.URL, "GET, redirects not followed")},
+			Run:    httpCheck(tg)})
+	}
+}
 
 func tlsCheck(host string, port int, network, starttls, alpn string, days Threshold) func(context.Context, *Env) Result {
 	return func(ctx context.Context, env *Env) Result {
@@ -66,7 +158,7 @@ func tlsCheck(host string, port int, network, starttls, alpn string, days Thresh
 	}
 }
 
-func httpCheck(t config.HTTPTarget) func(context.Context, *Env) Result {
+func httpCheck(t HTTPTarget) func(context.Context, *Env) Result {
 	want := t.ExpectStatus
 	if want == 0 {
 		want = 200

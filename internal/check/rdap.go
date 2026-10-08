@@ -10,7 +10,38 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/toppk/sitescope/internal/config"
 )
+
+type Domains struct {
+	config.Timing
+	Names     []string  `json:"names"`
+	Days      Threshold `json:"days"`
+	Bootstrap string    `json:"bootstrap"`
+	// RDAP base URLs per TLD, used before the IANA bootstrap file.
+	Servers map[string]string `json:"servers"`
+}
+
+func (d *Domains) Defaults(*config.Config) {
+	d.Days = d.Days.Or(Threshold{Warn: 45, Crit: 14})
+	config.Def(&d.Bootstrap, "https://data.iana.org/rdap/dns.json")
+}
+
+func (d *Domains) Validate() error { return nil }
+
+func (d *Domains) build(b *builder) {
+	t := d.Timing.Merge(config.Timing{Interval: config.Duration(12 * time.Hour), Timeout: config.Duration(30 * time.Second),
+		RetryInterval: config.Duration(10 * time.Minute)})
+	rd := &rdap{bootstrapURL: d.Bootstrap, overrides: d.Servers}
+	for _, n := range d.Names {
+		n = fqdn(n)
+		tld := n[strings.LastIndex(n, ".")+1:]
+		b.add(t, &Check{ID: "domain." + n, Name: "Registration of " + n, Area: "domains",
+			Probes: []Probe{{"RDAP server for ." + tld, "443/tcp", "HTTPS GET domain record", 1}},
+			Run:    rd.check(n, d.Days)})
+	}
+}
 
 // fallbackRDAP covers registries that run RDAP but are missing from the IANA bootstrap file.
 var fallbackRDAP = map[string]string{

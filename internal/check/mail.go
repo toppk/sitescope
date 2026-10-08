@@ -15,6 +15,102 @@ import (
 	"github.com/toppk/sitescope/internal/config"
 )
 
+type Mail struct {
+	Banner     *MailBanner `json:"banner"`
+	OpenRelay  *OpenRelay  `json:"openRelay"`
+	Blocklists *Blocklists `json:"blocklists"`
+}
+
+type MailServer struct {
+	Name   string   `json:"name"`
+	Addrs  []string `json:"addrs"`
+	Port   int      `json:"port"`
+	Expect string   `json:"expect"`
+}
+
+type MailBanner struct {
+	config.Timing
+	Servers []MailServer `json:"servers"`
+	Latency Threshold    `json:"latency"`
+}
+
+type OpenRelay struct {
+	config.Timing
+	Servers []MailServer `json:"servers"`
+	Helo    string       `json:"helo"`
+	From    string       `json:"from"`
+	To      string       `json:"to"`
+	Expect  int          `json:"expect"`
+}
+
+type Blocklists struct {
+	config.Timing
+	Resolver string      `json:"resolver"`
+	IPs      []string    `json:"ips"`
+	Lists    []Blocklist `json:"lists"`
+}
+
+type Blocklist struct {
+	Zone string `json:"zone"`
+	IPv6 bool   `json:"ipv6"`
+	Crit bool   `json:"crit"`
+}
+
+func (m *Mail) Defaults(c *config.Config) {
+	if r := m.OpenRelay; r != nil {
+		if r.Expect == 0 {
+			r.Expect = 554
+		}
+		config.Def(&r.Helo, c.Hub.Hostname)
+		config.Def(&r.From, "relay-probe@example.com")
+		config.Def(&r.To, "relay-probe@example.net")
+	}
+	if b := m.Blocklists; b != nil {
+		config.Def(&b.Resolver, "127.0.0.1:53")
+	}
+}
+
+func (m *Mail) Validate() error { return nil }
+
+func (m *Mail) build(b *builder) {
+	if bn := m.Banner; bn != nil {
+		for _, s := range bn.Servers {
+			for _, a := range s.Addrs {
+				b.add(bn.Timing, &Check{ID: fmt.Sprintf("mail.banner.%s.%s", s.Name, family(a)),
+					Name: fmt.Sprintf("SMTP banner %s (%s)", s.Name, family(a)), Area: "mail", Group: s.Name,
+					Probes: []Probe{{a, fmt.Sprintf("%d/tcp", smtpPort(s.Port)), "connect, read banner, QUIT", 1}},
+					Run:    bannerCheck(a, s, bn.Latency.Or(Threshold{Warn: 3, Crit: 10}))})
+			}
+		}
+	}
+	if r := m.OpenRelay; r != nil {
+		t := r.Timing.Merge(config.Timing{Interval: config.Duration(24 * time.Hour), RetryInterval: config.Duration(5 * time.Minute)})
+		for _, s := range r.Servers {
+			for _, a := range s.Addrs {
+				b.add(t, &Check{ID: fmt.Sprintf("mail.openrelay.%s.%s", s.Name, family(a)),
+					Name: fmt.Sprintf("Open relay probe %s (%s)", s.Name, family(a)), Area: "mail", Group: s.Name,
+					Probes: []Probe{{a, fmt.Sprintf("%d/tcp", smtpPort(s.Port)),
+						"EHLO, MAIL FROM, RCPT TO an outside address (expects 554), QUIT", 1}},
+					Run: openRelayCheck(a, s.Port, r)})
+			}
+		}
+	}
+	if bl := m.Blocklists; bl != nil {
+		t := bl.Timing.Merge(config.Timing{Interval: config.Duration(time.Hour)})
+		for _, ip := range bl.IPs {
+			n := 0
+			for _, l := range bl.Lists {
+				if l.IPv6 || !strings.Contains(ip, ":") {
+					n++
+				}
+			}
+			b.add(t, &Check{ID: "mail.blocklist." + ip, Name: "Blocklists for " + ip, Area: "mail", Group: "Blocklists",
+				Probes: []Probe{{bl.Resolver, "53/udp", "DNSBL lookup per list, forwarded to the lists by that resolver", n}},
+				Run:    blocklistCheck(ip, bl)})
+		}
+	}
+}
+
 func smtpDial(ctx context.Context, addr string, port int) (*textproto.Conn, error) {
 	if port == 0 {
 		port = 25
@@ -37,7 +133,7 @@ func quit(c *textproto.Conn) {
 	}
 }
 
-func bannerCheck(addr string, s config.MailServer, lat Threshold) func(context.Context, *Env) Result {
+func bannerCheck(addr string, s MailServer, lat Threshold) func(context.Context, *Env) Result {
 	return func(ctx context.Context, _ *Env) Result {
 		start := time.Now()
 		c, err := smtpDial(ctx, addr, s.Port)
@@ -58,7 +154,7 @@ func bannerCheck(addr string, s config.MailServer, lat Threshold) func(context.C
 	}
 }
 
-func openRelayCheck(addr string, port int, cfg *config.OpenRelay) func(context.Context, *Env) Result {
+func openRelayCheck(addr string, port int, cfg *OpenRelay) func(context.Context, *Env) Result {
 	return func(ctx context.Context, _ *Env) Result {
 		c, err := smtpDial(ctx, addr, port)
 		if err != nil {
@@ -133,7 +229,7 @@ func listed(answers []string) (bool, error) {
 	return false, nil
 }
 
-func blocklistCheck(ipStr string, cfg *config.Blocklists) func(context.Context, *Env) Result {
+func blocklistCheck(ipStr string, cfg *Blocklists) func(context.Context, *Env) Result {
 	return func(ctx context.Context, _ *Env) Result {
 		ip, err := netip.ParseAddr(ipStr)
 		if err != nil {
