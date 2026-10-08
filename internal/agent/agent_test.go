@@ -59,6 +59,7 @@ func write(t *testing.T, root, p, content string) {
 
 func fakeRoot(t *testing.T) string {
 	root := t.TempDir()
+	write(t, root, "/etc/os-release", "NAME=NixOS\nID=nixos\nVERSION_ID=\"26.05\"\nPRETTY_NAME=\"NixOS 26.05 (Yarara)\"\n")
 	write(t, root, "/proc/uptime", "12345.67 100.0\n")
 	write(t, root, "/proc/loadavg", "0.10 0.20 0.30 1/100 999\n")
 	write(t, root, "/proc/meminfo", "MemTotal:  1000000 kB\nMemFree: 1 kB\nMemAvailable:  400000 kB\nSwapTotal: 524284 kB\nSwapFree: 524000 kB\n")
@@ -101,6 +102,9 @@ func TestCollect(t *testing.T) {
 	if len(r.Disks) != 1 || r.Disks[0].Mount != "/" {
 		t.Errorf("disks = %+v", r.Disks)
 	}
+	if r.OS == nil || r.OS.ID != "nixos" || r.OS.Name != "NixOS 26.05 (Yarara)" {
+		t.Errorf("os = %+v", r.OS)
+	}
 	if r.System.RebootNeeded || r.System.NixpkgsDate != "20260920" {
 		t.Errorf("system = %+v", r.System)
 	}
@@ -113,6 +117,24 @@ func TestCollect(t *testing.T) {
 	os.Symlink(filepath.Join(root, "/nix/store/k2"), filepath.Join(root, "/nix/store/sys-b/kernel"))
 	if r := c.Collect(context.Background()); !r.System.RebootNeeded {
 		t.Error("kernel change not detected")
+	}
+}
+
+func TestCollectNotNixOS(t *testing.T) {
+	root := fakeRoot(t)
+	os.Remove(filepath.Join(root, "/run/booted-system"))
+	os.Remove(filepath.Join(root, "/run/current-system"))
+	write(t, root, "/etc/os-release", "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=44\n")
+	c := &Collector{Root: root, Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false", WireGuard: new(bool)}}
+	r := c.Collect(context.Background())
+	if r.OS == nil || r.OS.ID != "fedora" || r.OS.VersionID != "44" {
+		t.Errorf("os = %+v", r.OS)
+	}
+	if _, ok := r.Errors["system"]; ok {
+		t.Errorf("NixOS facts are skipped elsewhere: %v", r.Errors)
+	}
+	if _, ok := r.Errors["wireguard"]; ok {
+		t.Errorf("wireguard false skips WireGuard: %v", r.Errors)
 	}
 }
 

@@ -113,7 +113,7 @@ unknown.
 | `host.HOST.swap` | swap in use | `{60, 90}` % |
 | `host.HOST.load` | 5-minute load per CPU | `{2, 4}` |
 | `host.HOST.units` | failed systemd units: any is warn | |
-| `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers` | `{600, 3600}` s |
+| `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers`; not on a host with `wireguard: false` | `{600, 3600}` s |
 
 CPU, memory pressure, disk I/O and network are rates over `rateWindow`
 (5 minutes) from the agent's counters, so a brief spike doesn't alert but
@@ -133,6 +133,9 @@ From the agent's report, area `hygiene`.
   only userland doesn't trigger it.
 - `host.HOST.nixpkgs`: age of the nixpkgs revision in `nixos-version`:
   warn at 30 days, crit at 90.
+
+Both are for NixOS hosts only. A host with another `os` in its entry
+doesn't get them.
 
 ## Monitoring
 

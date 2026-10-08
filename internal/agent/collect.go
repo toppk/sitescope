@@ -32,33 +32,78 @@ type Collector struct {
 
 func (c *Collector) path(p string) string { return filepath.Join(c.Root, p) }
 
+// collector fills one report section; applies is nil when it always runs.
+type collector struct {
+	name    string
+	applies func(c *Collector) bool
+	run     func(c *Collector, ctx context.Context, r *report.Report) error
+}
+
+func plain(f func(c *Collector, r *report.Report) error) func(*Collector, context.Context, *report.Report) error {
+	return func(c *Collector, _ context.Context, r *report.Report) error { return f(c, r) }
+}
+
+var collectors = []collector{
+	{"os", nil, plain((*Collector).osRelease)},
+	{"uptime", nil, plain((*Collector).uptime)},
+	{"load", nil, plain((*Collector).load)},
+	{"memory", nil, plain((*Collector).memory)},
+	{"disks", nil, plain((*Collector).disks)},
+	{"system", (*Collector).isNixOS, plain((*Collector).system)},
+	{"units", nil, (*Collector).failedUnits},
+	{"counters", nil, plain((*Collector).counters)},
+	{"cgroups", nil, plain((*Collector).units)},
+	{"wireguard", func(c *Collector) bool { return c.Cfg.WireGuardOn() }, (*Collector).wireguard},
+	{"postfix", func(c *Collector) bool { return c.Cfg.Postfix }, (*Collector).postfix},
+	{"knot", func(c *Collector) bool { return c.Cfg.Knot }, (*Collector).knot},
+}
+
 func (c *Collector) Collect(ctx context.Context) *report.Report {
 	r := &report.Report{Time: time.Now().UTC(), CPUs: runtime.NumCPU(), Errors: map[string]string{}}
 	r.Host, _ = os.Hostname()
-	fail := func(section string, err error) {
-		if err != nil {
-			r.Errors[section] = err.Error()
+	for _, k := range collectors {
+		if k.applies != nil && !k.applies(c) {
+			continue
 		}
-	}
-	fail("uptime", c.uptime(r))
-	fail("load", c.load(r))
-	fail("memory", c.memory(r))
-	fail("disks", c.disks(r))
-	fail("system", c.system(r))
-	fail("units", c.failedUnits(ctx, r))
-	fail("counters", c.counters(r))
-	fail("cgroups", c.units(r))
-	fail("wireguard", c.wireguard(ctx, r))
-	if c.Cfg.Postfix {
-		fail("postfix", c.postfix(ctx, r))
-	}
-	if c.Cfg.Knot {
-		fail("knot", c.knot(ctx, r))
+		if err := k.run(c, ctx, r); err != nil {
+			r.Errors[k.name] = err.Error()
+		}
 	}
 	if len(r.Errors) == 0 {
 		r.Errors = nil
 	}
 	return r
+}
+
+// isNixOS is decided per collection; /run/current-system appears before services start.
+func (c *Collector) isNixOS() bool {
+	_, err := os.Lstat(c.path("/run/current-system"))
+	return err == nil
+}
+
+func (c *Collector) osRelease(r *report.Report) error {
+	b, err := os.ReadFile(c.path("/etc/os-release"))
+	if err != nil {
+		return err
+	}
+	o := &report.OS{}
+	for _, line := range strings.Split(string(b), "\n") {
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		v = strings.Trim(v, `"'`)
+		switch k {
+		case "ID":
+			o.ID = v
+		case "VERSION_ID":
+			o.VersionID = v
+		case "PRETTY_NAME":
+			o.Name = v
+		}
+	}
+	r.OS = o
+	return nil
 }
 
 func (c *Collector) uptime(r *report.Report) error {

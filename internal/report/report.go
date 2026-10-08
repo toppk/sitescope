@@ -12,6 +12,7 @@ type Report struct {
 	Memory      Memory     `json:"memory"`
 	Disks       []Disk     `json:"disks"`
 	FailedUnits []string   `json:"failedUnits"`
+	OS          *OS        `json:"os,omitempty"`
 	System      System     `json:"system"`
 	WireGuard   []WGPeer   `json:"wireguard,omitempty"`
 	Postfix     *Postfix   `json:"postfix,omitempty"`
@@ -109,6 +110,14 @@ type Disk struct {
 	FilesFree  uint64  `json:"filesFree"`
 }
 
+// OS is from /etc/os-release.
+type OS struct {
+	ID        string `json:"id"`
+	VersionID string `json:"versionId,omitempty"`
+	Name      string `json:"name,omitempty"`
+}
+
+// System is NixOS-only; it stays empty elsewhere.
 type System struct {
 	Booted       string `json:"booted"`
 	Current      string `json:"current"`

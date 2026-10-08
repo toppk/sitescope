@@ -45,6 +45,10 @@ type Host struct {
 	URL     string `json:"url"`
 	Postfix bool   `json:"postfix"`
 	Knot    bool   `json:"knot"`
+	// OS is "nixos" (the default) or another os-release ID; the NixOS checks need nixos.
+	OS string `json:"os,omitempty"`
+	// WireGuard is on unless set to false.
+	WireGuard *bool `json:"wireguard,omitempty"`
 	// WireGuard peers to ignore (by name or key), e.g. a roaming peer that may sleep.
 	WGIgnore []string `json:"wgIgnore"`
 }
@@ -106,13 +110,17 @@ func (hs *Hosts) build(b *builder) {
 		w("pressure", "memory pressure", func(r Rates) Result { return EvalMemPressure(r, hs.MemoryStall, hs.SwapIn) })
 		w("diskio", "disk I/O", func(r Rates) Result { return EvalDiskIO(r, hs.DiskBusy, hs.IOStall) })
 		w("network", "network", func(r Rates) Result { return EvalNetwork(r, hs.NetErrors, hs.NetMbps) })
-		d("wireguard", "WireGuard handshakes", "hosts", "wireguard", func(r *report.Report, now time.Time) Result {
-			return EvalWireGuard(r, now, hs.WGHandshake, hs.WGPeers, h.WGIgnore)
-		})
-		d("reboot", "reboot needed", "hygiene", "system", func(r *report.Report, _ time.Time) Result { return EvalReboot(r) })
-		d("nixpkgs", "nixpkgs age", "hygiene", "system", func(r *report.Report, now time.Time) Result {
-			return EvalNixpkgs(r, now, hs.NixpkgsAge)
-		})
+		if h.WireGuard == nil || *h.WireGuard {
+			d("wireguard", "WireGuard handshakes", "hosts", "wireguard", func(r *report.Report, now time.Time) Result {
+				return EvalWireGuard(r, now, hs.WGHandshake, hs.WGPeers, h.WGIgnore)
+			})
+		}
+		if h.OS == "" || h.OS == "nixos" {
+			d("reboot", "reboot needed", "hygiene", "system", func(r *report.Report, _ time.Time) Result { return EvalReboot(r) })
+			d("nixpkgs", "nixpkgs age", "hygiene", "system", func(r *report.Report, now time.Time) Result {
+				return EvalNixpkgs(r, now, hs.NixpkgsAge)
+			})
+		}
 		if h.Postfix {
 			d("postfix", "mail queue", "mail", "postfix", func(r *report.Report, _ time.Time) Result {
 				return EvalQueue(r, hs.QueueSize, hs.QueueAge)

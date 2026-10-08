@@ -27,8 +27,9 @@ Prometheus text format. `GET /healthz` answers 200 without a token.
 | `memory` | object | `totalKB`, `availableKB`, `freeKB`, `buffersKB`, `cachedKB`, `shmemKB`, `dirtyKB`, `swapTotalKB`, `swapFreeKB` |
 | `disks` | array | `device`, `mount`, `fsType`, `totalBytes`, `availBytes`, `usedPct`, `inodesPct`, `files`, `filesFree`; real filesystems only, one per device |
 | `failedUnits` | []string | from `systemctl list-units --state=failed` |
-| `system` | object | `booted`, `current` (store paths), `rebootNeeded`, `nixosVersion`, `nixpkgsDate` (`YYYYMMDD`) |
-| `wireguard` | array | `publicKey`, `latestHandshake` (Unix seconds, 0 = never), `rxBytes`, `txBytes` |
+| `os` | object | `id`, `versionId`, `name` from `/etc/os-release` |
+| `system` | object | `booted`, `current` (store paths), `rebootNeeded`, `nixosVersion`, `nixpkgsDate` (`YYYYMMDD`); NixOS only, empty elsewhere |
+| `wireguard` | array | `publicKey`, `latestHandshake` (Unix seconds, 0 = never), `rxBytes`, `txBytes`; skipped with `agent.wireguard: false` |
 | `postfix` | object | `messages`, `queues` (per queue name), `oldestAgeSec`; only when enabled |
 | `knot` | array | `name`, `role`, `serial`, `expiresInSec` (-1 when not a secondary); only when enabled |
 | `counters` | object | cumulative since boot: `bootTime`, `cpu` (per CPU, seconds per mode), `pressure` (`cpu`, `memory`, `io`: `someTotalUs`, `fullTotalUs`, `someAvg60`, `fullAvg60`), `vmstat` (`oomKill`, `pswpin`, `pswpout`, `pgmajfault`), `disks` (whole devices: `reads`, `writes`, `readBytes`, `writtenBytes`, `ioTimeMs`), `net` (all but `lo` and `veth*`: bytes, errors and drops each way) |

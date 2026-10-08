@@ -85,6 +85,31 @@ func TestBuildFromConfig(t *testing.T) {
 	}
 }
 
+func TestHostOS(t *testing.T) {
+	c, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "charlie", "url": "http://127.0.0.1:9105", "os": "fedora", "wireguard": false}]}, "dns": null}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := Build(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range checks {
+		if strings.HasSuffix(x.ID, ".reboot") || strings.HasSuffix(x.ID, ".nixpkgs") || strings.HasSuffix(x.ID, ".wireguard") {
+			t.Errorf("%s on a Fedora host without WireGuard", x.ID)
+		}
+	}
+	if config.Get[*Hosts](c) == nil || config.Get[*DNS](c) != nil {
+		t.Error("a null section is absent")
+	}
+	if _, err := config.Parse([]byte(`{"tls": {"targets": 3}}`)); err == nil || !strings.HasPrefix(err.Error(), "config: tls: ") {
+		t.Errorf("section errors name the section: %v", err)
+	}
+	if _, err := config.Parse([]byte(`{"ct": {"names": ["["]}}`)); err == nil {
+		t.Error("sections validate")
+	}
+}
+
 func rep() *report.Report {
 	return &report.Report{
 		CPUs: 1, Load: [3]float64{0.1, 0.5, 0.2},

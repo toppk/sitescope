@@ -154,6 +154,8 @@ type Agent struct {
 	Postfix     bool   `json:"postfix"`
 	Knot        bool   `json:"knot"`
 	KnotSocket  string `json:"knotSocket"`
+	// WireGuard is on unless set to false.
+	WireGuard *bool `json:"wireguard,omitempty"`
 	// WGPeers names peers in metric labels; hosts.wgPeers is used when this is empty.
 	WGPeers map[string]string `json:"wgPeers"`
 	// Command paths; the module fills these from nixpkgs.
@@ -162,6 +164,8 @@ type Agent struct {
 	Postqueue string `json:"postqueue"`
 	Knotc     string `json:"knotc"`
 }
+
+func (a Agent) WireGuardOn() bool { return a.WireGuard == nil || *a.WireGuard }
 
 type Alerts struct {
 	Enabled          bool     `json:"enabled"`
