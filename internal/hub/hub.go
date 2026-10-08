@@ -22,13 +22,13 @@ import (
 )
 
 type Hub struct {
-	cfg    *config.Config
-	checks []*check.Check
-	byID   map[string]*check.Check
-	env    *check.Env
-	store  *store.Store
-	vault  *Vault
-	mailer *Mailer
+	cfg       *config.Config
+	checks    []*check.Check
+	byID      map[string]*check.Check
+	env       *check.Env
+	store     *store.Store
+	vault     *Vault
+	notifiers []Notifier
 
 	heartbeatURL string
 
@@ -66,7 +66,7 @@ func New(cfg *config.Config) (*Hub, error) {
 		recordedAt:   map[string]time.Time{}, recorded: map[string]status.Status{},
 		wake: make(chan string, 64),
 	}
-	h.mailer = &Mailer{cfg: cfg.Alerts, host: cfg.Hub.Hostname, url: cfg.Hub.PublicURL}
+	h.notifiers = []Notifier{&Mailer{cfg: cfg.Alerts, host: cfg.Hub.Hostname, url: cfg.Hub.PublicURL}}
 	h.env = &check.Env{
 		HTTP:       &http.Client{Timeout: time.Minute},
 		Hostname:   cfg.Hub.Hostname,
@@ -110,9 +110,9 @@ func (h *Hub) Run(ctx context.Context) error {
 	go func() { errc <- h.serveWeb(ctx) }()
 	go func() { errc <- h.serveControl(ctx) }()
 
-	h.mailer.Send(fmt.Sprintf("sitescope started on %s - vault LOCKED, run sitescope unlock", h.cfg.Hub.Hostname),
-		fmt.Sprintf("sitescope started on %s at %s.\n\nThe vault is locked: checks that need credentials report \"locked\" until an operator runs\n\n  sitescope unlock\n\non %s.\n",
-			h.cfg.Hub.Hostname, time.Now().Format(time.RFC1123), h.cfg.Hub.Hostname))
+	h.send(Message{Kind: KindStartup, Subject: fmt.Sprintf("sitescope started on %s - vault LOCKED, run sitescope unlock", h.cfg.Hub.Hostname),
+		Body: fmt.Sprintf("sitescope started on %s at %s.\n\nThe vault is locked: checks that need credentials report \"locked\" until an operator runs\n\n  sitescope unlock\n\non %s.\n",
+			h.cfg.Hub.Hostname, time.Now().Format(time.RFC1123), h.cfg.Hub.Hostname)})
 
 	go h.schedule(ctx)
 	select {

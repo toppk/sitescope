@@ -46,7 +46,7 @@ the commit to pin. Tags are optional; nothing reads them.
 | `internal/check` | the check modules: each section's settings, defaults, checks and probes |
 | `internal/alert` | the per-check state machine: retries, notification due |
 | `internal/store` | bbolt history and states |
-| `internal/hub` | scheduler, mailer, web (templates and `static/`), control socket, `hub.vault` |
+| `internal/hub` | scheduler, notifiers (email), web (templates and `static/`), control socket, `hub.vault` |
 | `internal/agent` | collector and its HTTP server |
 | `internal/report` | the agent's report |
 | `internal/vault`, `internal/secmem` | the age vault and locked memory |

@@ -3,6 +3,7 @@ package hub
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -338,5 +339,39 @@ func TestVaultCheck(t *testing.T) {
 	}
 	if !st.Due(start, time.Hour) {
 		t.Error("a long lock after a restart should email")
+	}
+}
+
+type fakeNotifier struct {
+	on   bool
+	err  error
+	sent []Message
+}
+
+func (f *fakeNotifier) Name() string  { return "fake" }
+func (f *fakeNotifier) Enabled() bool { return f.on }
+func (f *fakeNotifier) Send(m Message) error {
+	f.sent = append(f.sent, m)
+	return f.err
+}
+
+func TestNotifiers(t *testing.T) {
+	h := testHub(t)
+	now := time.Now()
+	h.started = now.Add(-2 * time.Hour)
+	ok, off, failing := &fakeNotifier{on: true}, &fakeNotifier{}, &fakeNotifier{on: true, err: errors.New("down")}
+	h.notifiers = []Notifier{ok, off, failing}
+	h.states["domain.example.org"].LastRun = now.Add(-90 * time.Minute)
+	h.notify(now)
+	if len(ok.sent) != 1 || len(off.sent) != 0 || ok.sent[0].Kind != KindChange || ok.sent[0].Worst != status.Unknown {
+		t.Fatalf("sent = %+v, disabled = %+v", ok.sent, off.sent)
+	}
+	if !h.states["domain.example.org"].NotifiedAt.IsZero() {
+		t.Error("a failed notifier leaves the change due")
+	}
+	h.notifiers = []Notifier{ok}
+	h.notify(now)
+	if len(ok.sent) != 2 || h.states["domain.example.org"].NotifiedAt.IsZero() {
+		t.Error("the change is marked once every notifier took it")
 	}
 }
