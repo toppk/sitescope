@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"runtime/debug"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -117,9 +117,7 @@ func (h *Hub) Run(ctx context.Context) error {
 	go func() { errc <- h.serveWeb(ctx) }()
 	go func() { errc <- h.serveControl(ctx) }()
 
-	h.send(Message{Kind: KindStartup, Subject: fmt.Sprintf("sitescope started on %s - vault LOCKED, run sitescope unlock", h.cfg.Hub.Hostname),
-		Body: fmt.Sprintf("sitescope started on %s at %s.\n\nThe vault is locked: checks that need credentials report \"locked\" until an operator runs\n\n  sitescope unlock\n\non %s.\n",
-			h.cfg.Hub.Hostname, time.Now().Format(time.RFC1123), h.cfg.Hub.Hostname)})
+	h.startup()
 
 	go h.schedule(ctx)
 	select {
@@ -245,4 +243,14 @@ func (h *Hub) prune(now time.Time) {
 	if err := h.store.Prune(now.AddDate(0, 0, -h.cfg.Hub.RetentionDays), keep); err != nil {
 		slog.Error("prune failed", "err", err)
 	}
+}
+
+// startup asks for an unlock; with nothing waiting on the vault, a locked one needs no operator.
+func (h *Hub) startup() {
+	if !h.needsVault() {
+		return
+	}
+	h.send(Message{Kind: KindStartup, Subject: fmt.Sprintf("sitescope started on %s - vault LOCKED, run sitescope unlock", h.cfg.Hub.Hostname),
+		Body: fmt.Sprintf("sitescope started on %s at %s.\n\nThe vault is locked: checks that need credentials report \"locked\" until an operator runs\n\n  sitescope unlock\n\non %s.\n",
+			h.cfg.Hub.Hostname, time.Now().Format(time.RFC1123), h.cfg.Hub.Hostname)})
 }

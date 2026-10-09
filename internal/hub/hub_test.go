@@ -401,4 +401,16 @@ func TestNoVaultBannerWithoutSecretChecks(t *testing.T) {
 	if strings.Contains(w.Body.String(), "Vault locked") {
 		t.Error("a locked vault pauses nothing here, so no banner")
 	}
+	n := &fakeNotifier{on: true}
+	h.notifiers = []Notifier{n}
+	h.startup()
+	if len(n.sent) != 0 {
+		t.Errorf("no unlock email when nothing needs the vault: %+v", n.sent)
+	}
+	full := testHub(t)
+	full.notifiers = []Notifier{n}
+	full.startup()
+	if len(n.sent) != 1 || n.sent[0].Kind != KindStartup {
+		t.Errorf("the unlock email when checks need the vault: %+v", n.sent)
+	}
 }
