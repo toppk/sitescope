@@ -164,21 +164,11 @@ func (hs *Hosts) build(b *builder) {
 }
 
 func agentCheck(h Host) func(context.Context, *Env) Result {
-	var mu sync.Mutex
-	var client *http.Client
+	client := caClient(h.CA)
 	return func(ctx context.Context, env *Env) Result {
-		c := env.HTTP
-		if h.CA != "" {
-			mu.Lock()
-			if client == nil {
-				var err error
-				if client, err = CAClient(h.CA); err != nil {
-					mu.Unlock()
-					return Critf("agent CA: %v", err)
-				}
-			}
-			c = client
-			mu.Unlock()
+		c, err := client(env)
+		if err != nil {
+			return Critf("agent CA: %v", err)
 		}
 		token := env.AgentToken
 		if h.TokenEnv != "" {
@@ -204,6 +194,26 @@ func agentCheck(h Host) func(context.Context, *Env) Result {
 		}
 		env.Reports.Put(h.Name, &r, env.now())
 		return Okf("up %s", fmtDuration(time.Duration(r.UptimeSec)*time.Second))
+	}
+}
+
+// caClient returns env.HTTP, or with a CA file a client that trusts only it, made on first use.
+func caClient(file string) func(*Env) (*http.Client, error) {
+	var mu sync.Mutex
+	var c *http.Client
+	return func(env *Env) (*http.Client, error) {
+		if file == "" {
+			return env.HTTP, nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if c == nil {
+			var err error
+			if c, err = CAClient(file); err != nil {
+				return nil, err
+			}
+		}
+		return c, nil
 	}
 }
 

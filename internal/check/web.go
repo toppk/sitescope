@@ -1,6 +1,7 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -39,6 +41,12 @@ type HTTPTarget struct {
 	URL          string    `json:"url"`
 	ExpectStatus int       `json:"expectStatus"`
 	Latency      Threshold `json:"latency"`
+	// CA is a PEM file of the only CA trusted for this URL, e.g. a device's own self-signed certificate.
+	CA string `json:"ca,omitempty"`
+	// Body is text the response must contain.
+	Body string `json:"body,omitempty"`
+	// Redirect is where the response must redirect to; any 3xx status then passes.
+	Redirect string `json:"redirect,omitempty"`
 	config.Timing
 }
 
@@ -48,7 +56,17 @@ func (c *TLS) Validate() error { return nil }
 
 func (c *HTTP) Defaults(*config.Config) {}
 
-func (c *HTTP) Validate() error { return nil }
+func (c *HTTP) Validate() error {
+	for _, t := range c.Targets {
+		if t.Redirect == "" {
+			continue
+		}
+		if _, err := url.Parse(t.Redirect); err != nil {
+			return fmt.Errorf("http: %s redirect: %w", t.URL, err)
+		}
+	}
+	return nil
+}
 
 func (c *TLS) build(b *builder) {
 	t := c.Timing.Merge(config.Timing{Interval: config.Duration(6 * time.Hour)})
@@ -160,28 +178,52 @@ func tlsCheck(host string, port int, network, starttls, alpn string, days Thresh
 
 func httpCheck(t HTTPTarget) func(context.Context, *Env) Result {
 	want := t.ExpectStatus
-	if want == 0 {
+	if want == 0 && t.Redirect == "" {
 		want = 200
 	}
 	lat := t.Latency.Or(Threshold{Warn: 2, Crit: 5})
+	client := caClient(t.CA)
 	return func(ctx context.Context, env *Env) Result {
+		c, err := client(env)
+		if err != nil {
+			return Critf("CA: %v", err)
+		}
 		req, err := http.NewRequestWithContext(ctx, "GET", t.URL, nil)
 		if err != nil {
 			return Critf("%v", err)
 		}
 		req.Header.Set("User-Agent", userAgent)
 		start := time.Now()
-		resp, err := noRedirect(env.HTTP).Do(req)
+		resp, err := noRedirect(c).Do(req)
 		if err != nil {
 			return Critf("%v", err)
 		}
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
 		took := time.Since(start)
-		if resp.StatusCode != want {
-			return Critf("status %d, want %d (%dms)", resp.StatusCode, want, took.Milliseconds())
+		code, ms := resp.StatusCode, took.Milliseconds()
+		if want != 0 && code != want {
+			return Critf("status %d, want %d (%dms)", code, want, ms)
 		}
-		return Rated(lat.Above(took.Seconds()), "status %d in %dms", resp.StatusCode, took.Milliseconds())
+		msg := fmt.Sprintf("status %d", code)
+		if t.Redirect != "" {
+			if code < 300 || code > 399 {
+				return Critf("status %d, want a redirect to %s (%dms)", code, t.Redirect, ms)
+			}
+			loc, err := resp.Location()
+			exp, _ := req.URL.Parse(t.Redirect)
+			if err != nil || loc.String() != exp.String() {
+				return Critf("redirects to %q, want %s (%dms)", resp.Header.Get("Location"), exp, ms)
+			}
+			msg += " to " + loc.String()
+		}
+		if t.Body != "" {
+			if !bytes.Contains(body, []byte(t.Body)) {
+				return Critf("%s, body lacks %q (%dms)", msg, t.Body, ms)
+			}
+			msg += ", body matches"
+		}
+		return Rated(lat.Above(took.Seconds()), "%s in %dms", msg, ms)
 	}
 }
 

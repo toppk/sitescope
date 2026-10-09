@@ -80,6 +80,15 @@ Section `http`, every minute. `http.NAME` fetches the URL without
 following redirects. Crit on a connection error or a status other than
 `expectStatus` (200); warn or crit when latency passes `{2, 5}` seconds.
 
+For devices and private services, a target can also set:
+
+- `ca`: a PEM file holding the only CA trusted for this URL. A device's
+  self-signed certificate works as its own CA. The name in the URL must
+  still match the certificate. Verification is never turned off.
+- `body`: text the response must contain, read from the first MiB.
+- `redirect`: where the response must redirect to, relative to the URL or
+  absolute. Any 3xx status then passes unless `expectStatus` is set.
+
 ## Mail
 
 | id | interval | checks |

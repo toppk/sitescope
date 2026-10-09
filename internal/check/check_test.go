@@ -803,3 +803,35 @@ func TestEvalKernelAndPackages(t *testing.T) {
 		t.Error("an older agent is unknown")
 	}
 }
+
+func TestHTTPDeviceOptions(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		w.Write([]byte("<title>Printer status</title>"))
+	}))
+	defer srv.Close()
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o644)
+	env := &Env{HTTP: http.DefaultClient}
+	run := func(tg HTTPTarget) Result { return httpCheck(tg)(context.Background(), env) }
+	for _, tc := range []struct {
+		name string
+		tg   HTTPTarget
+		want Status
+		msg  string
+	}{
+		{"body", HTTPTarget{URL: srv.URL + "/login", CA: ca, Body: "Printer status"}, OK, "status 200, body matches"},
+		{"body missing", HTTPTarget{URL: srv.URL + "/login", CA: ca, Body: "Scanner"}, Crit, `body lacks "Scanner"`},
+		{"redirect", HTTPTarget{URL: srv.URL + "/", CA: ca, Redirect: "/login"}, OK, "status 302 to " + srv.URL + "/login"},
+		{"wrong redirect", HTTPTarget{URL: srv.URL + "/", CA: ca, Redirect: srv.URL + "/admin"}, Crit, `redirects to "/login"`},
+		{"no redirect", HTTPTarget{URL: srv.URL + "/login", CA: ca, Redirect: "/login"}, Crit, "want a redirect"},
+		{"untrusted", HTTPTarget{URL: srv.URL + "/login"}, Crit, "certificate"},
+	} {
+		if r := run(tc.tg); r.Status != tc.want || !strings.Contains(r.Message, tc.msg) {
+			t.Errorf("%s = %v %q, want %v %q", tc.name, r.Status, r.Message, tc.want, tc.msg)
+		}
+	}
+}

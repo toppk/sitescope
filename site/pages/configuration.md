@@ -55,7 +55,7 @@ target) can override it with the same four keys:
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | |
 | `tls` | `targets: [{name, host, port, starttls, families, alpn}]`, `days {20,7}` | `port` 443, or 25 with `starttls: "smtp"`; `families` `["4","6"]`; `alpn: "h2"` warns unless h2 is chosen |
 | `ct` | `domains` (default `domains.names`), `issuers: ["Let's Encrypt"]`, `domainIssuers: {domain: [...]}`, `names`, `ignore`, `recent: "7d"`, `api`, `tokenSecret: "certspotter_token"` | Certificate Transparency through Cert Spotter; issuers match as substrings |
-| `http` | `targets: [{name, url, expectStatus: 200, latency {2,5}}]` | latency in seconds; redirects are not followed |
+| `http` | `targets: [{name, url, expectStatus: 200, latency {2,5}, ca, body, redirect}]` | latency in seconds; redirects are not followed |
 | `mail.banner` | `servers: [{name, addrs, port: 25, expect}]`, `latency {3,10}` | |
 | `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |
 | `mail.blocklists` | `resolver: "127.0.0.1:53"`, `ips`, `lists: [{zone, ipv6, crit}]` | |
