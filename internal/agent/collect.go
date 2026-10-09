@@ -215,7 +215,7 @@ func (c *Collector) disks(r *report.Report) error {
 		return err
 	}
 	// one entry per device: bind mounts (PrivateTmp, ProtectSystem) repeat the same filesystem
-	seen := map[string]int{}
+	seen, wholes := map[string]int{}, map[string]bool{}
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	for sc.Scan() {
 		pre, post, ok := strings.Cut(sc.Text(), " - ")
@@ -226,10 +226,12 @@ func (c *Collector) disks(r *report.Report) error {
 		if len(pf) < 5 || len(qf) < 1 || !diskFS[qf[0]] {
 			continue
 		}
-		dev, mount := pf[2], unescapeMount(pf[4])
+		dev, mount, whole := pf[2], unescapeMount(pf[4]), pf[3] == "/"
 		if i, ok := seen[dev]; ok {
-			if len(mount) < len(r.Disks[i].Mount) {
+			// prefer the filesystem's own mount over a bind of a subdirectory, then the shorter path
+			if whole && !wholes[dev] || whole == wholes[dev] && len(mount) < len(r.Disks[i].Mount) {
 				r.Disks[i].Mount = mount
+				wholes[dev] = whole
 			}
 			continue
 		}
@@ -248,7 +250,7 @@ func (c *Collector) disks(r *report.Report) error {
 		if st.Files > 0 {
 			d.InodesPct = round1(100 * float64(st.Files-st.Ffree) / float64(st.Files))
 		}
-		seen[dev] = len(r.Disks)
+		seen[dev], wholes[dev] = len(r.Disks), whole
 		r.Disks = append(r.Disks, d)
 	}
 	return nil

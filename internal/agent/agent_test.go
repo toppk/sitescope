@@ -398,6 +398,12 @@ func TestKernelAndPackages(t *testing.T) {
 	if r.Kernel == nil || r.Kernel.Running != "7.2.5-200.fc44.x86_64" || r.Kernel.Newest != "7.2.10-200.fc44.x86_64" {
 		t.Errorf("kernel = %+v", r.Kernel)
 	}
+	os.RemoveAll(filepath.Join(root, "/usr/lib/modules"))
+	write(t, root, "/boot/vmlinuz-7.2.9-200.fc44.x86_64", "")
+	write(t, root, "/boot/vmlinuz-0-rescue-0123abcd", "")
+	if r := c.Collect(context.Background()); r.Kernel == nil || r.Kernel.Newest != "7.2.9-200.fc44.x86_64" {
+		t.Errorf("kernel from /boot = %+v", r.Kernel)
+	}
 	if r.Packages == nil || r.Packages.Manager != "rpm" || r.Packages.Changed != at.Unix() {
 		t.Errorf("packages = %+v", r.Packages)
 	}
@@ -429,5 +435,22 @@ func TestCollectorTimeout(t *testing.T) {
 	}
 	if r.UptimeSec != 12345.67 || r.Host == "late" {
 		t.Errorf("the others still report, and the stuck one can't write: %+v", r)
+	}
+}
+
+func TestDiskBindOfSubdir(t *testing.T) {
+	root := fakeRoot(t)
+	for _, d := range []string{"/data/vol2", "/home/u", "/h2"} {
+		os.MkdirAll(filepath.Join(root, d), 0o755)
+	}
+	mounts := "22 1 8:0 / / rw - ext4 /dev/sda rw\n" +
+		"40 22 0:50 / /data/vol2 rw - btrfs /dev/vdb rw\n" +
+		"41 22 0:50 /u /home/u rw - btrfs /dev/vdb rw\n"
+	for _, tc := range []struct{ extra, want string }{{"", "/data/vol2"}, {"42 22 0:50 / /h2 ro - btrfs /dev/vdb rw\n", "/h2"}} {
+		write(t, root, "/proc/self/mountinfo", mounts+tc.extra)
+		r := &report.Report{}
+		if err := (&Collector{Root: root}).disks(r); err != nil || len(r.Disks) != 2 || r.Disks[1].Mount != tc.want {
+			t.Errorf("disks = %+v, %v; want %s", r.Disks, err, tc.want)
+		}
 	}
 }

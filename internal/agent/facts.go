@@ -8,25 +8,34 @@ import (
 	"github.com/toppk/sitescope/internal/report"
 )
 
-// kernel compares the running kernel with the newest under /usr/lib/modules; NixOS uses its generations instead.
+// kernel compares the running kernel with the newest installed; NixOS uses its generations instead.
 func (c *Collector) kernel(r *report.Report) error {
 	b, err := os.ReadFile(c.path("/proc/sys/kernel/osrelease"))
 	if err != nil {
 		return err
 	}
 	k := &report.Kernel{Running: strings.TrimSpace(string(b))}
-	ents, err := os.ReadDir(c.path("/usr/lib/modules"))
-	if err != nil {
-		return err
+	newer := func(v string) {
+		if k.Newest == "" || VersionCompare(v, k.Newest) > 0 {
+			k.Newest = v
+		}
 	}
+	ents, modErr := os.ReadDir(c.path("/usr/lib/modules"))
 	for _, e := range ents {
 		// a directory left behind by an out-of-tree module has no kernel image
-		if _, err := os.Stat(c.path("/usr/lib/modules/" + e.Name() + "/vmlinuz")); err != nil && e.Name() != k.Running {
-			continue
+		if _, err := os.Stat(c.path("/usr/lib/modules/" + e.Name() + "/vmlinuz")); err == nil || e.Name() == k.Running {
+			newer(e.Name())
 		}
-		if k.Newest == "" || VersionCompare(e.Name(), k.Newest) > 0 {
-			k.Newest = e.Name()
+	}
+	// systemd's ProtectKernelModules hides /usr/lib/modules; /boot still lists the images
+	boot, bootErr := os.ReadDir(c.path("/boot"))
+	for _, e := range boot {
+		if v, ok := strings.CutPrefix(e.Name(), "vmlinuz-"); ok && !strings.HasPrefix(v, "0-rescue-") {
+			newer(v)
 		}
+	}
+	if k.Newest == "" {
+		return errors.Join(modErr, bootErr, errors.New("no kernel images found"))
 	}
 	r.Kernel = k
 	return nil
