@@ -293,8 +293,13 @@ func (h *Hub) public(w http.ResponseWriter, _ *http.Request) {
 		sub = summary(sts)
 	}
 	h.render(w, "public", map[string]any{"Page": "status",
-		"Lights": ls, "Overall": overall(ls), "Summary": sub, "Locked": !h.vault.Unlocked(),
+		"Lights": ls, "Overall": overall(ls), "Summary": sub, "Locked": !h.vault.Unlocked() && h.needsVault(),
 	})
+}
+
+// needsVault is whether any check waits for a secret; without one a locked vault pauses nothing.
+func (h *Hub) needsVault() bool {
+	return slices.ContainsFunc(h.checks, func(c *check.Check) bool { return c.Secret != "" })
 }
 
 // statusJSON is the public page as JSON: the same facts, nothing more.

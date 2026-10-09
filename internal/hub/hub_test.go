@@ -381,3 +381,24 @@ func TestNotifiers(t *testing.T) {
 		t.Error("after a full delivery the same message goes to everyone again")
 	}
 }
+
+func TestNoVaultBannerWithoutSecretChecks(t *testing.T) {
+	cfg, err := config.Parse([]byte(`{"hub": {"stateDir": "` + t.TempDir() + `", "lockedAfter": "-1s"},
+		"hosts": {"hosts": [{"name": "home", "local": true, "os": "fedora", "wireguard": false}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.store.Close()
+	if h.byID["hub.vault"] != nil {
+		t.Error("lockedAfter negative drops hub.vault")
+	}
+	w := httptest.NewRecorder()
+	h.public(w, httptest.NewRequest("GET", "/", nil))
+	if strings.Contains(w.Body.String(), "Vault locked") {
+		t.Error("a locked vault pauses nothing here, so no banner")
+	}
+}
