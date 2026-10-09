@@ -13,8 +13,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -333,5 +335,48 @@ func TestAgentTLS(t *testing.T) {
 	os.Chtimes(cf, time.Now().Add(time.Minute), time.Now().Add(time.Minute))
 	if resp, err := get(second); err != nil || resp.StatusCode != 200 {
 		t.Errorf("a renewed cert is picked up without a restart: %v", err)
+	}
+}
+
+func TestUnits(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "systemctl")
+	os.WriteFile(bin, []byte(`#!/bin/sh
+case "$*" in
+*ExecMainStatus*) printf 'Id=backup.service\nActiveState=inactive\nResult=exit-code\nExecMainStatus=3\n' ;;
+--user*) exit 1 ;;
+*) printf 'Id=sshd.service\nLoadState=loaded\nActiveState=active\nSubState=running\nResult=success\nUnit=\nLastTriggerUSec=\nNextElapseUSecRealtime=\n\n'
+   printf 'Id=backup.timer\nLoadState=loaded\nActiveState=active\nSubState=waiting\nResult=success\nUnit=backup.service\nLastTriggerUSec=@1791460000\nNextElapseUSecRealtime=@1791546400\n' ;;
+esac
+`), 0o755)
+	c := &Collector{Cfg: config.Agent{Systemctl: bin}}
+	got, err := c.Units(context.Background(), UnitQuery{System: []string{"sshd.service", "backup.timer"}, User: []string{"mine.timer"}})
+	if err == nil || !strings.Contains(err.Error(), "systemctl") {
+		t.Errorf("a failing user manager is an error: %v", err)
+	}
+	want := []report.UnitState{
+		{Unit: "sshd.service", Load: "loaded", Active: "active", Sub: "running", Result: "success"},
+		{Unit: "backup.timer", Load: "loaded", Active: "active", Sub: "waiting", Result: "exit-code", Service: "backup.service",
+			ExitStatus: 3, LastRun: 1791460000, NextRun: 1791546400},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("units =\n%+v\nwant\n%+v", got, want)
+	}
+
+	s := &Server{Collector: &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: bin, WG: "/bin/false"}}, Token: "tok"}
+	get := func(q string) (int, string) {
+		req := httptest.NewRequest("GET", "/v1/report"+q, nil)
+		req.Header.Set("Authorization", "Bearer tok")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, req)
+		return w.Code, w.Body.String()
+	}
+	if code, body := get("?unit=sshd.service&unit=backup.timer"); code != 200 || !strings.Contains(body, `"unit":"backup.timer"`) {
+		t.Errorf("queried units = %d %s", code, body)
+	}
+	if code, body := get(""); code != 200 || strings.Contains(body, `"services"`) {
+		t.Errorf("no query, no units = %d %s", code, body)
+	}
+	if code, _ := get("?unit=" + url.QueryEscape("x; rm -rf /")); code != 400 {
+		t.Errorf("bad unit name = %d", code)
 	}
 }

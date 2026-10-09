@@ -19,6 +19,8 @@ type Report struct {
 	Knot        []Zone     `json:"knot,omitempty"`
 	Counters    *Counters  `json:"counters,omitempty"`
 	Units       []UnitMem  `json:"units,omitempty"`
+	// Services are the units the hub asked about, in the order asked.
+	Services []UnitState `json:"services,omitempty"`
 	// Per-section collection errors, so one broken probe doesn't hide the rest.
 	Errors map[string]string `json:"errors,omitempty"`
 }
@@ -96,6 +98,22 @@ type UnitMem struct {
 	Unit     string `json:"unit"`
 	Bytes    uint64 `json:"bytes"`
 	MaxBytes uint64 `json:"maxBytes,omitempty"`
+}
+
+// UnitState is one unit's state; a timer adds its schedule and its service's last result.
+type UnitState struct {
+	Unit   string `json:"unit"`
+	User   bool   `json:"user,omitempty"`
+	Load   string `json:"load"`
+	Active string `json:"active"`
+	Sub    string `json:"sub"`
+	Result string `json:"result,omitempty"`
+	// Timer fields: the service it starts, whether that is running, and Unix seconds (0 for none).
+	Service    string `json:"service,omitempty"`
+	Running    bool   `json:"running,omitempty"`
+	ExitStatus int    `json:"exitStatus,omitempty"`
+	LastRun    int64  `json:"lastRun,omitempty"`
+	NextRun    int64  `json:"nextRun,omitempty"`
 }
 
 type Disk struct {

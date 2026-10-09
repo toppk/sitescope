@@ -34,9 +34,16 @@ Prometheus text format. `GET /healthz` answers 200 without a token.
 | `knot` | array | `name`, `role`, `serial`, `expiresInSec` (-1 when not a secondary); only when enabled |
 | `counters` | object | cumulative since boot: `bootTime`, `cpu` (per CPU, seconds per mode), `pressure` (`cpu`, `memory`, `io`: `someTotalUs`, `fullTotalUs`, `someAvg60`, `fullAvg60`), `vmstat` (`oomKill`, `pswpin`, `pswpout`, `pgmajfault`), `disks` (whole devices: `reads`, `writes`, `readBytes`, `writtenBytes`, `ioTimeMs`), `net` (all but `lo` and `veth*`: bytes, errors and drops each way) |
 | `units` | array | each system service's cgroup memory: `unit`, `bytes`, `maxBytes` (only with a MemoryMax) |
+| `services` | array | only when asked for, see below: `unit`, `user`, `load`, `active`, `sub`, `result`; a timer adds `service`, `running`, `exitStatus`, `lastRun` and `nextRun` (Unix seconds, 0 = none) |
 | `errors` | object | section name → error, for each section that couldn't be collected |
 
 A failure in one section leaves the rest of the report intact.
+
+The hub asks about specific units with
+`/v1/report?unit=sshd.service&userUnit=backup.timer`, up to 64 names. The
+agent answers from `systemctl show` (with `--user` for `userUnit`) and
+puts them in `services`, in the order asked. A name that isn't a unit name
+is a 400.
 
 ## Metrics
 

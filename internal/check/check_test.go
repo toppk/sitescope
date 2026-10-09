@@ -712,3 +712,69 @@ func TestAgentReportCompat(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalUnit(t *testing.T) {
+	now := time.Unix(1791500000, 0)
+	ago := func(d time.Duration) int64 { return now.Add(-d).Unix() }
+	timer := report.UnitState{Unit: "backup.timer", Load: "loaded", Active: "active", Sub: "waiting", Result: "success",
+		LastRun: ago(3 * time.Hour), NextRun: ago(-21 * time.Hour)}
+	svc := report.UnitState{Unit: "sshd.service", Load: "loaded", Active: "active", Sub: "running"}
+	for _, tc := range []struct {
+		name string
+		s    func(*report.UnitState)
+		u    Unit
+		want Status
+		msg  string
+	}{
+		{"timer ok", nil, Unit{Name: "backup.timer"}, OK, "last run 3h00m ago, next in 21h00m"},
+		{"failed run", func(s *report.UnitState) { s.Result, s.ExitStatus = "exit-code", 2 }, Unit{Name: "backup.timer"}, Crit, "exit-code, exit status 2"},
+		{"warn severity", func(s *report.UnitState) { s.Result = "exit-code" }, Unit{Name: "backup.timer", Severity: "warn"}, Warn, "failed"},
+		{"running now", func(s *report.UnitState) { s.Result, s.Running = "", true }, Unit{Name: "backup.timer"}, OK, "running now"},
+		{"too old", nil, Unit{Name: "backup.timer", MaxAge: config.Duration(2 * time.Hour)}, Crit, "over 2h00m"},
+		{"overdue", func(s *report.UnitState) { s.NextRun = ago(2 * time.Hour) }, Unit{Name: "backup.timer"}, Crit, "overdue by 2h00m"},
+		{"not yet run", func(s *report.UnitState) { s.LastRun, s.Result = 0, "" }, Unit{Name: "backup.timer"}, OK, "not run yet"},
+		{"timer stopped", func(s *report.UnitState) { s.Active, s.NextRun = "inactive", 0 }, Unit{Name: "backup.timer"}, Crit, "timer inactive, not scheduled"},
+		{"missing", func(s *report.UnitState) { s.Load = "not-found" }, Unit{Name: "backup.timer"}, Crit, "not-found"},
+		{"user unit not asked", nil, Unit{Name: "backup.timer", User: true}, Unknown, "not in the agent's report"},
+	} {
+		s := timer
+		if tc.s != nil {
+			tc.s(&s)
+		}
+		r := EvalUnit(&report.Report{Services: []report.UnitState{s, svc}}, now, tc.u)
+		if r.Status != tc.want || !strings.Contains(r.Message, tc.msg) {
+			t.Errorf("%s = %v %q, want %v %q", tc.name, r.Status, r.Message, tc.want, tc.msg)
+		}
+	}
+	if r := EvalUnit(&report.Report{Services: []report.UnitState{svc}}, now, Unit{Name: "sshd.service"}); r.Status != OK || r.Message != "active (running)" {
+		t.Errorf("service = %+v", r)
+	}
+	svc.Active, svc.Sub = "failed", "failed"
+	if r := EvalUnit(&report.Report{Services: []report.UnitState{svc}}, now, Unit{Name: "sshd.service", Severity: "warn"}); r.Status != Warn {
+		t.Errorf("failed service = %+v", r)
+	}
+	if r := EvalUnit(&report.Report{}, now, Unit{Name: "sshd.service"}); r.Status != Unknown || !strings.Contains(r.Message, "1.4.0") {
+		t.Errorf("an older agent = %+v", r)
+	}
+}
+
+func TestUnitsConfig(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RawQuery
+		w.Write([]byte(`{"host": "alpha", "services": [{"unit": "sshd.service", "load": "loaded", "active": "active", "sub": "running"}]}`))
+	}))
+	defer srv.Close()
+	h := Host{Name: "alpha", URL: srv.URL, Units: []Unit{{Name: "sshd.service"}, {Name: "backup.timer", User: true}}}
+	env := &Env{HTTP: http.DefaultClient, Reports: &Reports{}}
+	agentCheck(h)(context.Background(), env)
+	if got != "unit=sshd.service&userUnit=backup.timer" {
+		t.Errorf("query = %q", got)
+	}
+	for _, bad := range []string{`{"name": "sshd"}`, `{"name": "sshd.service", "severity": "page"}`} {
+		_, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "alpha", "url": "http://a", "units": [` + bad + `]}]}}`))
+		if err == nil {
+			t.Errorf("%s should not validate", bad)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -74,6 +75,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rep := s.report(r.Context())
+	if q := (UnitQuery{r.URL.Query()["unit"], r.URL.Query()["userUnit"]}); r.URL.Path == "/v1/report" && !q.Empty() {
+		if err := q.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cp := *rep
+		cp.Errors = maps.Clone(rep.Errors)
+		var err error
+		if cp.Services, err = s.Collector.Units(r.Context(), q); err != nil {
+			if cp.Errors == nil {
+				cp.Errors = map[string]string{}
+			}
+			cp.Errors["services"] = err.Error()
+		}
+		rep = &cp
+	}
 	if r.URL.Path == "/metrics" {
 		var b bytes.Buffer
 		WriteMetrics(&b, rep, s.Peers, s.errCounts(), s.Version, time.Now())

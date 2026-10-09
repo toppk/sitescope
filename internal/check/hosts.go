@@ -59,6 +59,8 @@ type Host struct {
 	TokenEnv string `json:"tokenEnv,omitempty"`
 	// WireGuard peers to ignore (by name or key), e.g. a roaming peer that may sleep.
 	WGIgnore []string `json:"wgIgnore"`
+	// Units must be active; timers must also run on schedule and succeed.
+	Units []Unit `json:"units,omitempty"`
 }
 
 func (hs *Hosts) Defaults(*config.Config) {
@@ -83,7 +85,16 @@ func (hs *Hosts) Defaults(*config.Config) {
 	hs.UnitMemory = hs.UnitMemory.Or(Threshold{Warn: 85, Crit: 95})
 }
 
-func (hs *Hosts) Validate() error { return nil }
+func (hs *Hosts) Validate() error {
+	for _, h := range hs.Hosts {
+		for _, u := range h.Units {
+			if err := u.validate(h.Name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 func (hs *Hosts) build(b *builder) {
 	t := hs.Timing.Merge(config.Timing{Interval: config.Duration(time.Minute), Timeout: config.Duration(10 * time.Second)})
@@ -122,6 +133,9 @@ func (hs *Hosts) build(b *builder) {
 			d("wireguard", "WireGuard handshakes", "hosts", "wireguard", func(r *report.Report, now time.Time) Result {
 				return EvalWireGuard(r, now, hs.WGHandshake, hs.WGPeers, h.WGIgnore)
 			})
+		}
+		for _, u := range h.Units {
+			d("unit."+u.Name, u.Name, "hosts", "services", func(r *report.Report, now time.Time) Result { return EvalUnit(r, now, u) })
 		}
 		if h.OS == "" || h.OS == "nixos" {
 			d("reboot", "reboot needed", "hygiene", "system", func(r *report.Report, _ time.Time) Result { return EvalReboot(r) })
@@ -163,7 +177,7 @@ func agentCheck(h Host) func(context.Context, *Env) Result {
 		if h.TokenEnv != "" {
 			token = os.Getenv(h.TokenEnv)
 		}
-		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimSuffix(h.URL, "/")+"/v1/report", nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimSuffix(h.URL, "/")+"/v1/report"+unitQuery(h.Units), nil)
 		if err != nil {
 			return Critf("%v", err)
 		}

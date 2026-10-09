@@ -113,12 +113,39 @@ unknown.
 | `host.HOST.swap` | swap in use | `{60, 90}` % |
 | `host.HOST.load` | 5-minute load per CPU | `{2, 4}` |
 | `host.HOST.units` | failed systemd units: any is warn | |
+| `host.HOST.unit.NAME` | one per entry in the host's `units`: see below | crit, or the unit's `severity` |
 | `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers`; not on a host with `wireguard: false` | `{600, 3600}` s |
 
 CPU, memory pressure, disk I/O and network are rates over `rateWindow`
 (5 minutes) from the agent's counters, so a brief spike doesn't alert but
 a sustained one does. For the first two minutes after the hub or the host
 starts they report "collecting a baseline".
+
+### Units and timers
+
+A host's `units` names systemd units that must be up, beyond "no failed
+units". Each entry is `{name, user, severity, maxAge}`. `name` includes
+the suffix. `user: true` asks the agent user's own systemd manager, for an
+agent that runs as a user unit. `severity` is `crit` (the default) or
+`warn`.
+
+- A service, socket, mount or other unit must be loaded and `active`.
+- A timer must be loaded, `active` and scheduled. The service it starts
+  must have succeeded on its last run. A timer whose next run is over an
+  hour late is overdue. With `maxAge`, the last run must also be that
+  recent.
+
+```json
+"units": [
+  {"name": "sshd.service"},
+  {"name": "backup.timer", "user": true, "maxAge": "26h"},
+  {"name": "fwupd-refresh.timer", "severity": "warn"}
+]
+```
+
+The hub sends the list with each poll, so units are configured only in
+the hub's config. An agent older than 1.4.0 ignores the list, and these
+checks report unknown until it is upgraded.
 
 A WireGuard peer that only carries occasional traffic may go minutes
 without a handshake. Set `PersistentKeepalive` on it, raise the
