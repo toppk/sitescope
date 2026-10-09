@@ -50,6 +50,8 @@ var collectors = []collector{
 	{"memory", nil, plain((*Collector).memory)},
 	{"disks", nil, plain((*Collector).disks)},
 	{"system", (*Collector).isNixOS, plain((*Collector).system)},
+	{"kernel", func(c *Collector) bool { return !c.isNixOS() }, plain((*Collector).kernel)},
+	{"packages", func(c *Collector) bool { return !c.isNixOS() }, plain((*Collector).packages)},
 	{"units", nil, (*Collector).failedUnits},
 	{"counters", nil, plain((*Collector).counters)},
 	{"cgroups", nil, plain((*Collector).units)},

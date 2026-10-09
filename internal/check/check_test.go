@@ -97,10 +97,15 @@ func TestHostOS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ids := map[string]bool{}
 	for _, x := range checks {
-		if strings.HasSuffix(x.ID, ".reboot") || strings.HasSuffix(x.ID, ".nixpkgs") || strings.HasSuffix(x.ID, ".wireguard") {
+		ids[x.ID] = true
+		if strings.HasSuffix(x.ID, ".nixpkgs") || strings.HasSuffix(x.ID, ".wireguard") {
 			t.Errorf("%s on a Fedora host without WireGuard", x.ID)
 		}
+	}
+	if !ids["host.charlie.reboot"] || !ids["host.charlie.updates"] {
+		t.Errorf("a Fedora host has the kernel and package checks: %v", ids)
 	}
 	if config.Get[*Hosts](c) == nil || config.Get[*DNS](c) != nil {
 		t.Error("a null section is absent")
@@ -776,5 +781,25 @@ func TestUnitsConfig(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s should not validate", bad)
 		}
+	}
+}
+
+func TestEvalKernelAndPackages(t *testing.T) {
+	now := time.Unix(1791500000, 0)
+	r := &report.Report{Kernel: &report.Kernel{Running: "7.2.5-200.fc44.x86_64", Newest: "7.2.9-200.fc44.x86_64"},
+		Packages: &report.Packages{Manager: "rpm", Changed: now.Add(-40 * 24 * time.Hour).Unix()}}
+	if res := EvalKernel(r); res.Status != Warn || !strings.Contains(res.Message, "newest installed 7.2.9") {
+		t.Errorf("newer kernel installed = %+v", res)
+	}
+	r.Kernel.Newest = r.Kernel.Running
+	if res := EvalKernel(r); res.Status != OK {
+		t.Errorf("current kernel = %+v", res)
+	}
+	if res := EvalPackages(r, now, Threshold{Warn: 30, Crit: 90}); res.Status != Warn || !strings.Contains(res.Message, "rpm packages last changed 40d ago") {
+		t.Errorf("packages = %+v", res)
+	}
+	old := &report.Report{}
+	if EvalKernel(old).Status != Unknown || EvalPackages(old, now, Threshold{}).Status != Unknown {
+		t.Error("an older agent is unknown")
 	}
 }

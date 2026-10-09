@@ -29,6 +29,8 @@ Prometheus text format. `GET /healthz` answers 200 without a token.
 | `failedUnits` | []string | from `systemctl list-units --state=failed` |
 | `os` | object | `id`, `versionId`, `name` from `/etc/os-release` |
 | `system` | object | `booted`, `current` (store paths), `rebootNeeded`, `nixosVersion`, `nixpkgsDate` (`YYYYMMDD`); NixOS only, empty elsewhere |
+| `kernel` | object | `running`, and `newest` installed in `/usr/lib/modules`; not on NixOS |
+| `packages` | object | `manager` (`rpm`, `dpkg`, `apk` or `pacman`) and `changed`, the package database's modification time in Unix seconds; not on NixOS |
 | `wireguard` | array | `publicKey`, `latestHandshake` (Unix seconds, 0 = never), `rxBytes`, `txBytes`; skipped with `agent.wireguard: false` |
 | `postfix` | object | `messages`, `queues` (per queue name), `oldestAgeSec`; only when enabled |
 | `knot` | array | `name`, `role`, `serial`, `expiresInSec` (-1 when not a secondary); only when enabled |

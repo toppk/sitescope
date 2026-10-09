@@ -380,3 +380,36 @@ esac
 		t.Errorf("bad unit name = %d", code)
 	}
 }
+
+func TestKernelAndPackages(t *testing.T) {
+	root := fakeRoot(t)
+	os.Remove(filepath.Join(root, "/run/booted-system"))
+	os.Remove(filepath.Join(root, "/run/current-system"))
+	write(t, root, "/proc/sys/kernel/osrelease", "7.2.5-200.fc44.x86_64\n")
+	for _, k := range []string{"7.2.5-200.fc44.x86_64", "7.2.10-200.fc44.x86_64", "7.2.9-200.fc44.x86_64"} {
+		write(t, root, "/usr/lib/modules/"+k+"/vmlinuz", "")
+	}
+	write(t, root, "/usr/lib/modules/7.3.0-100.fc44.x86_64/extra/akmod.ko", "")
+	write(t, root, "/usr/lib/sysimage/rpm/rpmdb.sqlite", "")
+	at := time.Unix(1791400000, 0)
+	os.Chtimes(filepath.Join(root, "/usr/lib/sysimage/rpm/rpmdb.sqlite"), at, at)
+	c := &Collector{Root: root, Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false", WireGuard: new(bool)}}
+	r := c.Collect(context.Background())
+	if r.Kernel == nil || r.Kernel.Running != "7.2.5-200.fc44.x86_64" || r.Kernel.Newest != "7.2.10-200.fc44.x86_64" {
+		t.Errorf("kernel = %+v", r.Kernel)
+	}
+	if r.Packages == nil || r.Packages.Manager != "rpm" || r.Packages.Changed != at.Unix() {
+		t.Errorf("packages = %+v", r.Packages)
+	}
+	if r := (&Collector{Root: fakeRoot(t)}).Collect(context.Background()); r.Kernel != nil || r.Packages != nil {
+		t.Error("NixOS hosts use their generations instead")
+	}
+	for _, tc := range []struct {
+		a, b string
+		want int
+	}{{"7.2.10", "7.2.9", 1}, {"7.2.9-200", "7.2.9-100", 1}, {"1.0a", "1.0", 1}, {"1.0", "1.0", 0}, {"1.01", "1.1", 0}, {"6.9", "6.10", -1}} {
+		if got := VersionCompare(tc.a, tc.b); got != tc.want {
+			t.Errorf("VersionCompare(%s, %s) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+}

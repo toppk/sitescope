@@ -161,8 +161,15 @@ From the agent's report, area `hygiene`.
 - `host.HOST.nixpkgs`: age of the nixpkgs revision in `nixos-version`:
   warn at 30 days, crit at 90.
 
-Both are for NixOS hosts only. A host with another `os` in its entry
-doesn't get them.
+Both are for NixOS hosts only. A host with another `os` in its entry gets
+these instead:
+
+- `host.HOST.reboot`: warn when a newer kernel is installed than the one
+  running. Installed kernels are the directories in `/usr/lib/modules`
+  that hold a `vmlinuz`, compared the way rpm compares versions.
+- `host.HOST.updates`: days since the package database last changed, which
+  is the last install, update or removal (rpm, dpkg, apk or pacman):
+  `updatesAge`, warn at 30 days, crit at 90.
 
 ## Monitoring
 

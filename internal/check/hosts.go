@@ -31,6 +31,7 @@ type Hosts struct {
 	QueueAge    Threshold         `json:"queueAge"`
 	KnotExpiry  Threshold         `json:"knotExpiry"`
 	NixpkgsAge  Threshold         `json:"nixpkgsAge"`
+	UpdatesAge  Threshold         `json:"updatesAge"` // days since packages last changed, off NixOS
 	// Rates are computed over RateWindow from the agents' counters.
 	RateWindow  config.Duration `json:"rateWindow"`
 	CPU         Threshold       `json:"cpu"`         // percent busy
@@ -73,6 +74,7 @@ func (hs *Hosts) Defaults(*config.Config) {
 	hs.QueueAge = hs.QueueAge.Or(Threshold{Warn: 3600, Crit: 4 * 3600})
 	hs.KnotExpiry = hs.KnotExpiry.Or(Threshold{Warn: 14 * 86400, Crit: 3 * 86400})
 	hs.NixpkgsAge = hs.NixpkgsAge.Or(Threshold{Warn: 30, Crit: 90})
+	hs.UpdatesAge = hs.UpdatesAge.Or(Threshold{Warn: 30, Crit: 90})
 	if hs.RateWindow == 0 {
 		hs.RateWindow = config.Duration(5 * time.Minute)
 	}
@@ -141,6 +143,11 @@ func (hs *Hosts) build(b *builder) {
 			d("reboot", "reboot needed", "hygiene", "system", func(r *report.Report, _ time.Time) Result { return EvalReboot(r) })
 			d("nixpkgs", "nixpkgs age", "hygiene", "system", func(r *report.Report, now time.Time) Result {
 				return EvalNixpkgs(r, now, hs.NixpkgsAge)
+			})
+		} else {
+			d("reboot", "reboot needed", "hygiene", "kernel", func(r *report.Report, _ time.Time) Result { return EvalKernel(r) })
+			d("updates", "package updates", "hygiene", "packages", func(r *report.Report, now time.Time) Result {
+				return EvalPackages(r, now, hs.UpdatesAge)
 			})
 		}
 		if h.Postfix {
@@ -318,6 +325,27 @@ func EvalReboot(r *report.Report) Result {
 		return Okf("running a newer generation, no reboot needed")
 	}
 	return Okf("booted generation is current")
+}
+
+func EvalKernel(r *report.Report) Result {
+	k := r.Kernel
+	if k == nil {
+		return Unknownf("the agent does not report kernels; it needs sitescope 1.4.0 or later")
+	}
+	if k.Newest != "" && k.Newest != k.Running {
+		return Warnf("running %s, newest installed %s", k.Running, k.Newest)
+	}
+	return Okf("running the newest kernel, %s", k.Running)
+}
+
+func EvalPackages(r *report.Report, now time.Time, t Threshold) Result {
+	p := r.Packages
+	if p == nil {
+		return Unknownf("the agent does not report packages; it needs sitescope 1.4.0 or later")
+	}
+	days := now.Sub(time.Unix(p.Changed, 0)).Hours() / 24
+	return Rated(t.Above(days), "%s packages last changed %s ago (%s)", p.Manager,
+		fmtDuration(now.Sub(time.Unix(p.Changed, 0))), time.Unix(p.Changed, 0).UTC().Format("2006-01-02"))
 }
 
 func EvalNixpkgs(r *report.Report, now time.Time, t Threshold) Result {

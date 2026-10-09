@@ -14,6 +14,8 @@ type Report struct {
 	FailedUnits []string   `json:"failedUnits"`
 	OS          *OS        `json:"os,omitempty"`
 	System      System     `json:"system"`
+	Kernel      *Kernel    `json:"kernel,omitempty"`
+	Packages    *Packages  `json:"packages,omitempty"`
 	WireGuard   []WGPeer   `json:"wireguard,omitempty"`
 	Postfix     *Postfix   `json:"postfix,omitempty"`
 	Knot        []Zone     `json:"knot,omitempty"`
@@ -143,6 +145,18 @@ type System struct {
 	NixosVersion string `json:"nixosVersion"`
 	// Nixpkgs revision date taken from the version string (YYYYMMDD).
 	NixpkgsDate string `json:"nixpkgsDate,omitempty"`
+}
+
+// Kernel is the running kernel and the newest installed one; not on NixOS.
+type Kernel struct {
+	Running string `json:"running"`
+	Newest  string `json:"newest"`
+}
+
+// Packages is when the package database last changed: the latest install, update or removal; not on NixOS.
+type Packages struct {
+	Manager string `json:"manager"`
+	Changed int64  `json:"changed"` // Unix seconds
 }
 
 type WGPeer struct {
