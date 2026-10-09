@@ -17,6 +17,7 @@ pages=(
   "probes|Probes and alert volume|Use"
   "configuration|Configuration|Use"
   "nixos|NixOS module|Use"
+  "standalone|Without NixOS|Use"
   "cli|Command line|Use"
   "vault|Vault and secrets|Use"
   "web|Status page and API|Use"

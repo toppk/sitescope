@@ -139,7 +139,8 @@ listed.
 ## Hosts
 
 Section `hosts`, every minute. `host.HOST.agent` fetches the agent's
-report: crit if it can't. Every other host check reads that report, so it
+report: crit if it can't. For a `local` host the hub collects the report
+itself, with the same checks. Every other host check reads that report, so it
 depends on the agent check and doesn't retry by itself. A section the
 agent couldn't collect is warn; a report older than three intervals is
 unknown.

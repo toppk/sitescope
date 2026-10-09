@@ -16,6 +16,7 @@ Every page below is Markdown. llms-full.txt has all of them in one file.
 - [Probes and alert volume](probes.md): what the hub contacts, how often, and how many emails that can mean
 - [Configuration](configuration.md): every settings key and environment variable
 - [NixOS module](nixos.md): options and the generated units
+- [Without NixOS](standalone.md): a user-unit hub with its own host collected in-process
 - [Command line](cli.md): every subcommand
 - [Vault and secrets](vault.md): unlock, memory protection, token scopes
 - [Status page and API](web.md): routes, visibility, /status.json and /api/status
