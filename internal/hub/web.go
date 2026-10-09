@@ -300,14 +300,16 @@ func (h *Hub) public(w http.ResponseWriter, _ *http.Request) {
 // statusJSON is the public page as JSON: the same facts, nothing more.
 func (h *Hub) statusJSON(w http.ResponseWriter, _ *http.Request) {
 	ls := h.lights(h.rows())
-	out := struct {
-		Version  string        `json:"version"`
-		Time     time.Time     `json:"time"`
-		Overall  status.Status `json:"overall"`
-		Locked   bool          `json:"vaultLocked"`
-		Services []apiService  `json:"services"`
-	}{Version: Version, Time: time.Now().UTC(), Overall: overall(ls), Locked: !h.vault.Unlocked(), Services: services(ls)}
-	writeJSON(w, out)
+	writeJSON(w, StatusDoc{Version: Version, Time: time.Now().UTC(), Overall: overall(ls), Locked: !h.vault.Unlocked(), Services: services(ls)})
+}
+
+// StatusDoc is /status.json; fields may be added but never renamed or removed.
+type StatusDoc struct {
+	Version  string        `json:"version"`
+	Time     time.Time     `json:"time"`
+	Overall  status.Status `json:"overall"`
+	Locked   bool          `json:"vaultLocked"`
+	Services []apiService  `json:"services"`
 }
 
 func services(ls []light) []apiService {

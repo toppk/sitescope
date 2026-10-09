@@ -151,7 +151,7 @@ func agentCheck(h Host) func(context.Context, *Env) Result {
 			mu.Lock()
 			if client == nil {
 				var err error
-				if client, err = caClient(h.CA); err != nil {
+				if client, err = CAClient(h.CA); err != nil {
 					mu.Unlock()
 					return Critf("agent CA: %v", err)
 				}
@@ -186,8 +186,8 @@ func agentCheck(h Host) func(context.Context, *Env) Result {
 	}
 }
 
-// caClient trusts only the CA in file, for agents with private-CA certificates.
-func caClient(file string) (*http.Client, error) {
+// CAClient trusts only the CA in file, for agents and hubs with private-CA certificates.
+func CAClient(file string) (*http.Client, error) {
 	pem, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err

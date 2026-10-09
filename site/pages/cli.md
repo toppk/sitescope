@@ -83,6 +83,31 @@ warn  tls.mx.example.org.smtp.25.v4      212ms  certificate expires 2026-10-15 (
     protocol), what it sends there and how often, when all is healthy.
     See [Probes and alert volume](probes.html).
 
+## Checking a running hub
+
+`sitescope verify -url URL [flags]`
+:   Reads the hub's `/healthz` and `/status.json` and checks them, for use
+    after a deploy. It only sends two GETs, without credentials. Prints one
+    line per expectation and exits 1 if any is unmet.
+
+    | flag | expects |
+    |---|---|
+    | `-version V` | `/status.json`'s version: exactly `X.Y.Z+rev`, or just the release when `V` has no `+rev` |
+    | `-vault STATE` | the vault state: `locked` or `unlocked` |
+    | `-overall STATUS` | the overall status: `ok`, `warn`, `crit` or `unknown` |
+    | `-services N` | the number of services in `/status.json` |
+    | `-checks N` | the number of checks listed in `/status.json` (class A only) |
+    | `-ca FILE` | trust only this PEM CA for the hub's certificate, for a hub behind a private CA |
+    | `-timeout D` | per request; default `10s` |
+
+```text
+$ sitescope verify -url https://status.example.org -version 1.4.0+abc1234 -vault unlocked -overall ok
+ok    healthz   200 ok
+ok    version   1.4.0+abc1234
+ok    vault     unlocked
+ok    overall   ok
+```
+
 ## Other
 
 `sitescope version`

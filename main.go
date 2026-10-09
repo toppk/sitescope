@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -56,6 +57,8 @@ operator (on the hub host; paths come from the hub config, -config or $SITESCOPE
 
   check -config FILE [-match SUBSTR]   run checks once and print results
   probes -config FILE                  list every destination the hub contacts, and how often
+  verify -url URL [-version V] [-ca FILE] [-vault STATE] [-overall STATUS] [-services N] [-checks N]
+                              read a running hub's /healthz and /status.json and check them
   version
 `
 
@@ -86,6 +89,8 @@ func main() {
 		if cfg, err = loadConfig(flag.NewFlagSet("probes", flag.ExitOnError), args); err == nil {
 			err = hub.Probes(cfg, os.Stdout)
 		}
+	case "verify":
+		err = runVerify(args)
 	case "unlock", "lock", "status":
 		err = runControl(cmd, args)
 	case "vault":
@@ -191,6 +196,44 @@ func runCheck(args []string) error {
 		os.Exit(2)
 	}
 	return nil
+}
+
+func runVerify(args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	url := fs.String("url", "", "the hub's base URL")
+	var want hub.Expect
+	fs.StringVar(&want.Version, "version", "", "expected version, X.Y.Z or X.Y.Z+rev")
+	fs.StringVar(&want.Vault, "vault", "", "expected vault state: locked or unlocked")
+	fs.StringVar(&want.Overall, "overall", "", "expected overall status: ok, warn, crit or unknown")
+	fs.IntVar(&want.Services, "services", -1, "expected number of services in /status.json")
+	fs.IntVar(&want.Checks, "checks", -1, "expected number of checks in /status.json")
+	ca := fs.String("ca", "", "PEM file of the only CA to trust for the hub's certificate")
+	timeout := fs.Duration("timeout", 10*time.Second, "timeout for each request")
+	fs.Parse(args)
+	if *url == "" || fs.NArg() > 0 {
+		return errors.New("verify: -url URL is required, and takes no arguments")
+	}
+	switch want.Vault {
+	case "", "locked", "unlocked":
+	default:
+		return fmt.Errorf("verify: -vault %q, want locked or unlocked", want.Vault)
+	}
+	if want.Overall != "" {
+		if _, err := status.ParseStatus(want.Overall); err != nil {
+			return fmt.Errorf("verify: -overall: %w", err)
+		}
+	}
+	c := &http.Client{}
+	if *ca != "" {
+		var err error
+		if c, err = check.CAClient(*ca); err != nil {
+			return fmt.Errorf("verify: -ca: %w", err)
+		}
+	}
+	c.Timeout = *timeout
+	ctx, cancel := signalContext()
+	defer cancel()
+	return hub.Verify(ctx, c, *url, want, os.Stdout)
 }
 
 func runControl(cmd string, args []string) error {
