@@ -1,9 +1,12 @@
 package check
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -894,5 +897,76 @@ func TestSeenWithin(t *testing.T) {
 	}
 	if r := step(2 * time.Hour); r.Status != Crit || !strings.Contains(r.Message, "no reply; last seen 7h00m ago") {
 		t.Errorf("gone 7h = %+v", r)
+	}
+}
+
+func TestIPP(t *testing.T) {
+	enc := func(groups ...[]any) []byte {
+		var b bytes.Buffer
+		b.Write([]byte{2, 0, 0, 0, 0, 0, 0, 1})
+		for _, g := range groups {
+			b.WriteByte(g[0].(byte))
+			for i := 1; i < len(g); i += 3 {
+				tag, name := g[i].(byte), g[i+1].(string)
+				var v []byte
+				switch x := g[i+2].(type) {
+				case int:
+					v = binary.BigEndian.AppendUint32(nil, uint32(int32(x)))
+				case string:
+					v = []byte(x)
+				}
+				b.WriteByte(tag)
+				binary.Write(&b, binary.BigEndian, uint16(len(name)))
+				b.WriteString(name)
+				binary.Write(&b, binary.BigEndian, uint16(len(v)))
+				b.Write(v)
+			}
+		}
+		b.WriteByte(0x03)
+		return b.Bytes()
+	}
+	printer := enc([]any{byte(0x01), byte(0x47), "attributes-charset", "utf-8"},
+		[]any{byte(0x04), byte(0x23), "printer-state", 3,
+			byte(0x44), "printer-state-reasons", "toner-low-warning", byte(0x44), "", "media-needed-report",
+			byte(0x42), "marker-names", "Black", byte(0x42), "", "Cyan", byte(0x42), "", "Waste",
+			byte(0x21), "marker-levels", 45, byte(0x21), "", 8, byte(0x21), "", -3,
+			byte(0x21), "marker-low-levels", 10, byte(0x21), "", 10, byte(0x21), "", 0})
+	var got IPPAttrs
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got, _ = ParseIPP(b)
+		w.Header().Set("Content-Type", "application/ipp")
+		w.Write(printer)
+	}))
+	defer srv.Close()
+	u := "ipp" + strings.TrimPrefix(srv.URL, "http") + "/ipp/print"
+	r := ippCheck(IPPTarget{Name: "printer", URL: u})(context.Background(), &Env{HTTP: http.DefaultClient})
+	if r.Status != Warn || r.Message != "idle; Black 45%, Cyan 8% (low), Waste ok; toner-low-warning" {
+		t.Errorf("printer = %v %q", r.Status, r.Message)
+	}
+	if p := got.strs("printer-uri"); len(p) != 1 || p[0] != u || len(got.strs("requested-attributes")) != len(printerAttrs) {
+		t.Errorf("request = %v", got)
+	}
+
+	for _, tc := range []struct {
+		a    IPPAttrs
+		want Status
+		msg  string
+	}{
+		{IPPAttrs{"printer-state": {5}, "printer-state-reasons": {"media-jam-error"}}, Crit, "stopped; media-jam-error"},
+		{IPPAttrs{"printer-state": {5}, "printer-state-reasons": {"door-open"}}, Crit, "door-open"},
+		{IPPAttrs{"marker-names": {"Black"}, "marker-levels": {0}}, Crit, "Black empty"},
+		{IPPAttrs{"printer-state": {4}, "printer-state-reasons": {"none"}}, OK, "printing"},
+		{IPPAttrs{}, Unknown, "no state"},
+	} {
+		if r := EvalPrinter(tc.a); r.Status != tc.want || !strings.Contains(r.Message, tc.msg) {
+			t.Errorf("%v = %v %q, want %v %q", tc.a, r.Status, r.Message, tc.want, tc.msg)
+		}
+	}
+	if _, err := ParseIPP([]byte{2, 0, 0x04, 0x06, 0, 0, 0, 1, 3}); err == nil {
+		t.Error("an IPP error status is an error")
+	}
+	if post, p, _ := ippURLs("ipps://printer.lan/ipp/print"); post != "https://printer.lan:631/ipp/print" || p != "ipps://printer.lan:631/ipp/print" {
+		t.Errorf("ipps URLs = %s %s", post, p)
 	}
 }

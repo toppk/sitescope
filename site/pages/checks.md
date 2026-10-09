@@ -103,6 +103,15 @@ agent: printers, cameras, a picture frame.
 - `tcp.NAME` (section `tcp`) connects to `host:port` and closes again,
   e.g. a camera's RTSP port 554. Crit when the connection fails.
 
+- `ipp.NAME` (section `ipp`, every 5 minutes) asks a printer for its
+  state and supplies with IPP Get-Printer-Attributes. `url` is the
+  printer's `ipp://` or `ipps://` URI, e.g. `ipp://printer.lan/ipp/print`,
+  and `ca` trusts a private CA for `ipps`. The message lists every
+  supply's level. A supply at or under the printer's own low level is
+  warn, and an empty one is crit. State reasons ending in `-error`, a jam,
+  or an open door or cover are crit. Other `-warning` reasons and a
+  stopped printer are warn.
+
 A device that sleeps, like a picture frame, sets `seenWithin`, e.g.
 `"6h"`. A failure is then ok while the device answered within that
 window, and the message says when it was last seen. After a hub restart
@@ -110,7 +119,8 @@ the window starts again from the restart.
 
 ```json
 "ping": {"targets": [{"name": "printer.lan"}, {"name": "frame.lan", "seenWithin": "6h"}]},
-"tcp": {"targets": [{"name": "camera.lan", "port": 554}]}
+"tcp": {"targets": [{"name": "camera.lan", "port": 554}]},
+"ipp": {"targets": [{"name": "printer", "url": "ipp://printer.lan/ipp/print"}]}
 ```
 
 ## Mail

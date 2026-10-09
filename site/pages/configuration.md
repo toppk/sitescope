@@ -58,6 +58,7 @@ target) can override it with the same four keys:
 | `http` | `targets: [{name, url, expectStatus: 200, latency {2,5}, ca, body, redirect}]` | latency in seconds; redirects are not followed |
 | `ping` | `targets: [{name, host, count: 3, family, seenWithin, loss, rtt}]`, `loss {50,100}` %, `rtt` (off) ms | `host` defaults to `name`; `rtt` is the average round trip |
 | `tcp` | `targets: [{name, host, port, seenWithin}]` | `host` defaults to `name` |
+| `ipp` | `targets: [{name, url, ca}]` | `url` is `ipp://` or `ipps://` (port 631 unless given) |
 | `mail.banner` | `servers: [{name, addrs, port: 25, expect}]`, `latency {3,10}` | |
 | `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |
 | `mail.blocklists` | `resolver: "127.0.0.1:53"`, `ips`, `lists: [{zone, ipv6, crit}]` | |

@@ -33,6 +33,7 @@ func init() {
 	config.Register("mail", func() config.Section { return new(Mail) })
 	config.Register("ping", func() config.Section { return new(Ping) })
 	config.Register("tcp", func() config.Section { return new(TCP) })
+	config.Register("ipp", func() config.Section { return new(IPP) })
 	config.Register("linode", func() config.Section { return new(Linode) })
 	config.Register("cloudflare", func() config.Section { return new(Cloudflare) })
 }
