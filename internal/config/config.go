@@ -180,6 +180,16 @@ type Alerts struct {
 	// UnknownAfter alerts on a check stuck in unknown this long; negative disables.
 	UnknownAfter Duration `json:"unknownAfter"`
 	DigestTime   string   `json:"digestTime"`
+	Ntfy         Ntfy     `json:"ntfy"`
+}
+
+// Ntfy pushes to a phone; the topic URL is a secret, so it comes from SITESCOPE_NTFY_URL.
+type Ntfy struct {
+	Enabled bool `json:"enabled"`
+	// Min is the lowest status pushed, crit (the default) or warn; recoveries from it are pushed too.
+	Min string `json:"min"`
+	// Details adds the check names; without it a push carries only counts.
+	Details bool `json:"details"`
 }
 
 // Public is one rule for the public page; each check takes the first rule that matches it.
@@ -327,6 +337,9 @@ func (c *Config) validate() error {
 		if err := sec.Validate(); err != nil {
 			return fmt.Errorf("config: %w", err)
 		}
+	}
+	if m := c.Alerts.Ntfy.Min; m != "" && m != "crit" && m != "warn" {
+		return fmt.Errorf("config: alerts.ntfy.min %q, want crit or warn", m)
 	}
 	if d := c.Alerts.DigestTime; d != "" {
 		if _, _, err := ParseClock(d); err != nil {

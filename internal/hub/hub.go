@@ -29,6 +29,7 @@ type Hub struct {
 	store     *store.Store
 	vault     *Vault
 	notifiers []Notifier
+	delivered map[string]string // notifier -> the message it took while another failed
 
 	heartbeatURL string
 
@@ -63,10 +64,12 @@ func New(cfg *config.Config) (*Hub, error) {
 		cfg: cfg, checks: checks, byID: map[string]*check.Check{}, store: st,
 		vault:        &Vault{path: cfg.Hub.Vault, since: time.Now()},
 		heartbeatURL: os.Getenv("SITESCOPE_HEARTBEAT_URL"),
-		recordedAt:   map[string]time.Time{}, recorded: map[string]status.Status{},
+		recordedAt:   map[string]time.Time{}, recorded: map[string]status.Status{}, delivered: map[string]string{},
 		wake: make(chan string, 64),
 	}
-	h.notifiers = []Notifier{&Mailer{cfg: cfg.Alerts, host: cfg.Hub.Hostname, url: cfg.Hub.PublicURL}}
+	h.notifiers = []Notifier{&Mailer{cfg: cfg.Alerts, host: cfg.Hub.Hostname, url: cfg.Hub.PublicURL},
+		&Ntfy{cfg: cfg.Alerts.Ntfy, url: os.Getenv("SITESCOPE_NTFY_URL"), token: os.Getenv("SITESCOPE_NTFY_TOKEN"),
+			host: cfg.Hub.Hostname, link: cfg.Hub.PublicURL, http: &http.Client{}, retry: 5 * time.Second}}
 	h.env = &check.Env{
 		HTTP:       &http.Client{Timeout: time.Minute},
 		Hostname:   cfg.Hub.Hostname,
@@ -100,6 +103,9 @@ func (h *Hub) Run(ctx context.Context) error {
 	defer h.store.Close()
 	defer h.vault.Lock()
 	slog.Info("hub starting", "checks", len(h.checks), "listen", h.cfg.Hub.Listen)
+	if h.cfg.Alerts.Ntfy.Enabled && os.Getenv("SITESCOPE_NTFY_URL") == "" {
+		slog.Warn("alerts.ntfy is enabled but SITESCOPE_NTFY_URL is not set; nothing will be pushed")
+	}
 	if h.env.AgentToken == "" && config.Get[*check.Hosts](h.cfg) != nil {
 		slog.Warn("SITESCOPE_AGENT_TOKEN is not set; agent polls will fail")
 	}

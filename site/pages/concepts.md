@@ -94,7 +94,24 @@ that are due and sends them in one email.
   email once you unlock.
 
 A failed send stays due and is retried on the hub's next pass, usually
-within a minute.
+within a minute. Only the notifiers that failed get it again.
+
+### ntfy
+
+Email can't reach you when the mail server is the thing that's down. With
+`alerts.ntfy.enabled`, the hub also pushes to an [ntfy](https://ntfy.sh)
+topic. It pushes only changes to `alerts.ntfy.min` (`crit`, or `warn`) or
+worse, and their recoveries. Everything else, including the digest and the
+startup message, stays email only. Pushes follow the same batching and
+renotify rules as email.
+
+The topic URL works like a password, so it comes from
+`SITESCOPE_NTFY_URL` in the environment file, never from the config. Add
+`SITESCOPE_NTFY_TOKEN` for a server that needs an access token. Host the
+topic somewhere other than the hub's own network. A push carries only
+counts, like "2 crit, 1 recovered", plus a link to the detail page.
+`alerts.ntfy.details: true` adds the check names. A failed push is retried
+twice, five seconds apart, before it waits for the next pass.
 
 ## Heartbeat
 

@@ -48,7 +48,7 @@ target) can override it with the same four keys:
 | key | default | notes |
 |---|---|---|
 | `hub` | `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL`, `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"` (the scheduler's grid), `concurrency: 8` | `lockedAfter` is how long the vault may stay locked before `hub.vault` warns (negative disables); `refresh` is the page's reload interval in seconds; `concurrency` caps checks running at once |
-| `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"`, `digestTime` | `digestTime` is `"HH:MM"`, local time; unset means no digest |
+| `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"`, `digestTime`, `ntfy: {enabled: false, min: "crit", details: false}` | `digestTime` is `"HH:MM"`, local time; unset means no digest. `ntfy` pushes to a phone, see [Notifications](concepts.html#notifications) |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`; `visibility` is `public`, `grouped` (default) or `private`; first match wins; unmatched checks are public under their area's name. See [visibility](web.html#visibility). Areas are `dns mail http tls domains hosts devices hygiene cloud hub` |
 | `hosts` | `hosts: [{name, url, postfix, knot, os, wireguard, ca, tokenEnv, wgIgnore, units}]` (`os` defaults to `"nixos"`; any other os-release ID drops the NixOS checks; `wireguard: false` drops the handshake check; `ca` is a PEM file that verifies an `https` agent URL; `tokenEnv` names the variable with this agent's own token; `units: [{name, user, severity, maxAge}]` lists systemd units that must be active, see [Hosts](checks.html#hosts)), `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `updatesAge {30,90}` days (hosts not on NixOS), `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | `delegation` is the expected NS names |
@@ -73,6 +73,8 @@ From `services.sitescope.environmentFile`:
 |---|---|
 | `SITESCOPE_AGENT_TOKEN` | the hub and every agent; one shared value, except for hosts that set `tokenEnv` |
 | a host's `tokenEnv` | the hub, for that agent; on the agent itself it is still `SITESCOPE_AGENT_TOKEN` |
+| `SITESCOPE_NTFY_URL` | the hub, with `alerts.ntfy.enabled`: the ntfy server and topic, e.g. `https://ntfy.sh/<secret topic>` |
+| `SITESCOPE_NTFY_TOKEN` | the hub, optional: an ntfy access token |
 | `SITESCOPE_HEARTBEAT_URL` | the hub; GET every `hub.heartbeatInterval` while healthy |
 | `SITESCOPE_CONFIG` | the CLI; config path when `-config` isn't given |
 

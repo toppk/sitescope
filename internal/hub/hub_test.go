@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -348,7 +349,7 @@ type fakeNotifier struct {
 	sent []Message
 }
 
-func (f *fakeNotifier) Name() string  { return "fake" }
+func (f *fakeNotifier) Name() string  { return fmt.Sprintf("fake%p", f) }
 func (f *fakeNotifier) Enabled() bool { return f.on }
 func (f *fakeNotifier) Send(m Message) error {
 	f.sent = append(f.sent, m)
@@ -369,9 +370,14 @@ func TestNotifiers(t *testing.T) {
 	if !h.states["domain.example.org"].NotifiedAt.IsZero() {
 		t.Error("a failed notifier leaves the change due")
 	}
-	h.notifiers = []Notifier{ok}
+	failing.err = nil
 	h.notify(now)
-	if len(ok.sent) != 2 || h.states["domain.example.org"].NotifiedAt.IsZero() {
-		t.Error("the change is marked once every notifier took it")
+	if len(ok.sent) != 1 || len(failing.sent) != 2 || h.states["domain.example.org"].NotifiedAt.IsZero() {
+		t.Errorf("only the failed notifier gets it again, then it is marked: ok %d, failing %d", len(ok.sent), len(failing.sent))
+	}
+	h.states["domain.example.org"].NotifiedAt = time.Time{}
+	h.notify(now)
+	if len(ok.sent) != 2 {
+		t.Error("after a full delivery the same message goes to everyone again")
 	}
 }

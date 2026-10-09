@@ -95,6 +95,7 @@ The rules that keep email down, with their defaults:
 | flap absorption | a check that changes and changes back before its next email is due sends nothing |
 | first sighting | a check seen healthy for the first time sends nothing |
 | unknown | silent at first; one UNKNOWN email after `unknownAfter` (1h); nothing for checks under a down agent |
+| ntfy | only changes to `alerts.ntfy.min` (crit) or worse, and their recoveries; the same batching and renotify rules |
 | digest | one a day after `digestTime`; skipped on the day of a start after that time |
 | startup | one "vault LOCKED" email per start; one `hub.vault` WARN if still locked after `hub.lockedAfter` (15m), and its recovery |
 

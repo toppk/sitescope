@@ -33,10 +33,19 @@ type Message struct {
 	Subject, Body string
 	// Worst is the most severe new status in a change message.
 	Worst status.Status
+	// Changes are a change message's checks, worst first.
+	Changes []Change
 }
 
-// send delivers to every enabled notifier; an error leaves the message due for the next pass.
+type Change struct {
+	ID, Name string
+	From, To status.Status
+}
+
+// send delivers to every enabled notifier; an error leaves the message due for the next pass,
+// when only the notifiers that failed get it again.
 func (h *Hub) send(m Message) error {
+	key := string(m.Kind) + "\x00" + m.Subject + "\x00" + m.Body
 	var errs []error
 	sent := false
 	for _, n := range h.notifiers {
@@ -44,13 +53,21 @@ func (h *Hub) send(m Message) error {
 			continue
 		}
 		sent = true
+		if h.delivered[n.Name()] == key {
+			continue
+		}
 		if err := n.Send(m); err != nil {
 			slog.Error("notification failed", "via", n.Name(), "subject", m.Subject, "err", err)
 			errs = append(errs, fmt.Errorf("%s: %w", n.Name(), err))
+			continue
 		}
+		h.delivered[n.Name()] = key
 	}
 	if !sent {
 		slog.Info("notifications disabled, not sending", "subject", m.Subject)
+	}
+	if len(errs) == 0 {
+		clear(h.delivered)
 	}
 	return errors.Join(errs...)
 }
@@ -81,10 +98,12 @@ func (h *Hub) notify(now time.Time) {
 	}
 	subject, body := ChangeMail(due)
 	worst := status.OK
+	var changes []Change
 	for _, d := range due {
 		worst = status.Worst(worst, d.to)
+		changes = append(changes, Change{d.id, d.name, d.from, d.to})
 	}
-	if err := h.send(Message{Kind: KindChange, Subject: subject, Body: body, Worst: worst}); err != nil {
+	if err := h.send(Message{Kind: KindChange, Subject: subject, Body: body, Worst: worst, Changes: changes}); err != nil {
 		return // stays due; retried on the next pass
 	}
 	h.mu.Lock()
