@@ -1,0 +1,53 @@
+# Tests, then checks that both the plain Go build and the Nix build report VERSION+rev.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: |
+          want="$(cat VERSION)+$(git rev-parse HEAD | cut -c1-7)"
+          go build -ldflags "-X main.version=$want" -o sitescope .
+          got=$(./sitescope version)
+          echo "go build: $got"
+          test "$got" = "$want"
+
+  nix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Flake check
+        run: nix flake check -L
+
+      - name: Build
+        run: |
+          nix build -L
+          want="$(cat VERSION)+$(git rev-parse HEAD | cut -c1-7)"
+          got=$(./result/bin/sitescope version)
+          echo "nix build: $got"
+          test "$got" = "$want"
+          file -L result/bin/sitescope | tee /dev/stderr | grep -q "statically linked"
