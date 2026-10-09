@@ -413,3 +413,21 @@ func TestKernelAndPackages(t *testing.T) {
 		}
 	}
 }
+
+func TestCollectorTimeout(t *testing.T) {
+	defer func(old []collector, d time.Duration) { collectors, collectTimeout = old, d }(collectors, collectTimeout)
+	block := make(chan struct{})
+	defer close(block)
+	collectors = append(collectors[:len(collectors):len(collectors)], collector{"stuck", nil,
+		func(_ *Collector, _ context.Context, r *report.Report) error { <-block; r.Host = "late"; return nil }})
+	collectTimeout = 200 * time.Millisecond
+	c := &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false"}}
+	start := time.Now()
+	r := c.Collect(context.Background())
+	if time.Since(start) > 2*time.Second || r.Errors["stuck"] != "timed out after 200ms" {
+		t.Errorf("stuck collector: %v after %s", r.Errors, time.Since(start))
+	}
+	if r.UptimeSec != 12345.67 || r.Host == "late" {
+		t.Errorf("the others still report, and the stuck one can't write: %+v", r)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -23,6 +24,9 @@ import (
 )
 
 const cmdTimeout = 5 * time.Second
+
+// collectTimeout bounds each collector, even one stuck in a syscall such as statfs on a hung mount.
+var collectTimeout = 8 * time.Second
 
 // Collector gathers a report; the root is overridable for tests.
 type Collector struct {
@@ -60,21 +64,59 @@ var collectors = []collector{
 	{"knot", func(c *Collector) bool { return c.Cfg.Knot }, (*Collector).knot},
 }
 
+// Collect runs the collectors in parallel, each into its own report, and merges what finished in time.
 func (c *Collector) Collect(ctx context.Context) *report.Report {
 	r := &report.Report{Time: time.Now().UTC(), CPUs: runtime.NumCPU(), Errors: map[string]string{}}
 	r.Host, _ = os.Hostname()
+	type done struct {
+		name string
+		part *report.Report
+		err  error
+	}
+	ch := make(chan done, len(collectors))
+	pending := map[string]bool{}
 	for _, k := range collectors {
 		if k.applies != nil && !k.applies(c) {
 			continue
 		}
-		if err := k.run(c, ctx, r); err != nil {
-			r.Errors[k.name] = err.Error()
+		pending[k.name] = true
+		go func() {
+			part := &report.Report{}
+			err := k.run(c, ctx, part)
+			ch <- done{k.name, part, err}
+		}()
+	}
+	timeout := time.After(collectTimeout)
+	for len(pending) > 0 {
+		select {
+		case d := <-ch:
+			delete(pending, d.name)
+			if d.err != nil {
+				r.Errors[d.name] = d.err.Error()
+			}
+			merge(r, d.part)
+		case <-timeout:
+			// a stuck collector keeps its own report, so leaving it behind is safe
+			for name := range pending {
+				r.Errors[name] = fmt.Sprintf("timed out after %s", collectTimeout)
+			}
+			pending = nil
 		}
 	}
 	if len(r.Errors) == 0 {
 		r.Errors = nil
 	}
 	return r
+}
+
+// merge copies the fields a collector set; collectors fill disjoint fields.
+func merge(dst, src *report.Report) {
+	d, s := reflect.ValueOf(dst).Elem(), reflect.ValueOf(src).Elem()
+	for i := range s.NumField() {
+		if f := s.Field(i); !f.IsZero() {
+			d.Field(i).Set(f)
+		}
+	}
 }
 
 // isNixOS is decided per collection; /run/current-system appears before services start.

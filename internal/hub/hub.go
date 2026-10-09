@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -106,7 +107,7 @@ func (h *Hub) Run(ctx context.Context) error {
 	if h.cfg.Alerts.Ntfy.Enabled && os.Getenv("SITESCOPE_NTFY_URL") == "" {
 		slog.Warn("alerts.ntfy is enabled but SITESCOPE_NTFY_URL is not set; nothing will be pushed")
 	}
-	if h.env.AgentToken == "" && config.Get[*check.Hosts](h.cfg) != nil {
+	if hs := config.Get[*check.Hosts](h.cfg); h.env.AgentToken == "" && hs != nil && slices.ContainsFunc(hs.Hosts, func(x check.Host) bool { return !x.Local && x.TokenEnv == "" }) {
 		slog.Warn("SITESCOPE_AGENT_TOKEN is not set; agent polls will fail")
 	}
 	h.vault.onChange = func() { h.wakeSecretChecks() }

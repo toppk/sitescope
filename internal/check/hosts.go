@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toppk/sitescope/internal/agent"
 	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/report"
 )
@@ -62,6 +63,8 @@ type Host struct {
 	WGIgnore []string `json:"wgIgnore"`
 	// Units must be active; timers must also run on schedule and succeed.
 	Units []Unit `json:"units,omitempty"`
+	// Local is the hub's own host, collected in-process with the agent settings instead of polled.
+	Local bool `json:"local,omitempty"`
 }
 
 func (hs *Hosts) Defaults(*config.Config) {
@@ -89,6 +92,12 @@ func (hs *Hosts) Defaults(*config.Config) {
 
 func (hs *Hosts) Validate() error {
 	for _, h := range hs.Hosts {
+		if h.Local && (h.URL != "" || h.CA != "" || h.TokenEnv != "") {
+			return fmt.Errorf("hosts: %s is local, so it takes no url, ca or tokenEnv", h.Name)
+		}
+		if !h.Local && h.URL == "" {
+			return fmt.Errorf("hosts: %s needs a url, or local: true", h.Name)
+		}
 		for _, u := range h.Units {
 			if err := u.validate(h.Name); err != nil {
 				return err
@@ -111,8 +120,13 @@ func (hs *Hosts) build(b *builder) {
 	}
 	for _, h := range hs.Hosts {
 		agentID := "host." + h.Name + ".agent"
-		b.add(t, &Check{ID: agentID, Name: h.Name + " agent reachable", Area: "hosts", Group: h.Name,
-			Probes: []Probe{urlProbe(h.URL, "GET /v1/report with the agent token")}, Run: agentCheck(h)})
+		if h.Local {
+			b.add(t, &Check{ID: agentID, Name: h.Name + " agent reachable", Area: "hosts", Group: h.Name,
+				Run: localCheck(h, b.cfg.Agent)})
+		} else {
+			b.add(t, &Check{ID: agentID, Name: h.Name + " agent reachable", Area: "hosts", Group: h.Name,
+				Probes: []Probe{urlProbe(h.URL, "GET /v1/report with the agent token")}, Run: agentCheck(h)})
+		}
 		d := func(id, name, area, section string, eval func(*report.Report, time.Time) Result) {
 			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: area, Group: h.Name,
 				DependsOn: agentID, Run: fromReport(h.Name, section, stale, eval)})
@@ -163,6 +177,36 @@ func (hs *Hosts) build(b *builder) {
 	}
 }
 
+// localCheck collects the hub's own host in-process; the host's postfix, knot and wireguard switches apply.
+func localCheck(h Host, cfg config.Agent) func(context.Context, *Env) Result {
+	cfg.Postfix, cfg.Knot, cfg.WireGuard = h.Postfix, h.Knot, h.WireGuard
+	c := &agent.Collector{Cfg: cfg}
+	q := unitQuery(h.Units)
+	return func(ctx context.Context, env *Env) Result {
+		ch := make(chan *report.Report, 1)
+		go func() {
+			r := c.Collect(ctx)
+			if !q.Empty() {
+				var err error
+				if r.Services, err = c.Units(ctx, q); err != nil {
+					if r.Errors == nil {
+						r.Errors = map[string]string{}
+					}
+					r.Errors["services"] = err.Error()
+				}
+			}
+			ch <- r
+		}()
+		select {
+		case r := <-ch:
+			env.Reports.Put(h.Name, r, env.now())
+			return Okf("up %s", fmtDuration(time.Duration(r.UptimeSec)*time.Second))
+		case <-ctx.Done():
+			return Critf("collecting the local report: %v", ctx.Err())
+		}
+	}
+}
+
 func agentCheck(h Host) func(context.Context, *Env) Result {
 	client := caClient(h.CA)
 	return func(ctx context.Context, env *Env) Result {
@@ -174,7 +218,7 @@ func agentCheck(h Host) func(context.Context, *Env) Result {
 		if h.TokenEnv != "" {
 			token = os.Getenv(h.TokenEnv)
 		}
-		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimSuffix(h.URL, "/")+"/v1/report"+unitQuery(h.Units), nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimSuffix(h.URL, "/")+"/v1/report"+urlQuery(unitQuery(h.Units)), nil)
 		if err != nil {
 			return Critf("%v", err)
 		}

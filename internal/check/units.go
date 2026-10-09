@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toppk/sitescope/internal/agent"
 	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/report"
 )
@@ -38,20 +39,24 @@ func (u Unit) validate(host string) error {
 	return nil
 }
 
-// unitQuery is appended to the agent's report URL.
-func unitQuery(units []Unit) string {
-	v := url.Values{}
+func unitQuery(units []Unit) agent.UnitQuery {
+	var q agent.UnitQuery
 	for _, u := range units {
 		if u.User {
-			v.Add("userUnit", u.Name)
+			q.User = append(q.User, u.Name)
 		} else {
-			v.Add("unit", u.Name)
+			q.System = append(q.System, u.Name)
 		}
 	}
-	if len(v) == 0 {
+	return q
+}
+
+// urlQuery is appended to the agent's report URL.
+func urlQuery(q agent.UnitQuery) string {
+	if q.Empty() {
 		return ""
 	}
-	return "?" + v.Encode()
+	return "?" + url.Values{"unit": q.System, "userUnit": q.User}.Encode()
 }
 
 // overdue is how late a timer may run before it counts as missed.

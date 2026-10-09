@@ -989,3 +989,37 @@ func TestOlderAgentOnNewChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalHost(t *testing.T) {
+	cfg, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "home", "local": true, "os": "fedora", "wireguard": false,
+		"units": [{"name": "nope-sitescope-test.service", "severity": "warn"}]}]}, "dns": null}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := Build(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]*Check{}
+	for _, c := range checks {
+		byID[c.ID] = c
+	}
+	a := byID["host.home.agent"]
+	if a == nil || len(a.Probes) != 0 || byID["host.home.unit.nope-sitescope-test.service"] == nil || byID["host.home.updates"] == nil {
+		t.Fatalf("local host checks = %v", byID)
+	}
+	env := &Env{Reports: &Reports{}}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if r := a.Run(ctx, env); r.Status != OK || !strings.HasPrefix(r.Message, "up ") {
+		t.Errorf("local collection = %+v", r)
+	}
+	if r, _ := env.Reports.Get("home"); r == nil || r.CPUs == 0 || (r.Services == nil && r.Errors["services"] == "") {
+		t.Errorf("local report = %+v", r)
+	}
+	for _, bad := range []string{`{"name": "x", "local": true, "url": "http://a"}`, `{"name": "x"}`} {
+		if _, err := config.Parse([]byte(`{"hosts": {"hosts": [` + bad + `]}}`)); err == nil {
+			t.Errorf("%s should not validate", bad)
+		}
+	}
+}
