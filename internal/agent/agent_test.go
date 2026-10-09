@@ -2,6 +2,15 @@ package agent
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -271,5 +280,58 @@ func TestMetrics(t *testing.T) {
 	}
 	if len(out) > 50<<10 {
 		t.Errorf("metrics are %d bytes", len(out))
+	}
+}
+
+func writeCert(t *testing.T, dir, cn string) (string, string, *x509.Certificate) {
+	t.Helper()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: cn},
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb, _ := x509.MarshalECPrivateKey(key)
+	cf, kf := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	os.WriteFile(kf, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}), 0o600)
+	os.WriteFile(cf, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644)
+	c, _ := x509.ParseCertificate(der)
+	return cf, kf, c
+}
+
+func TestAgentTLS(t *testing.T) {
+	if _, err := TLSConfig("cert.pem", ""); err == nil {
+		t.Error("a cert without a key is a config error")
+	}
+	if tc, err := TLSConfig("", ""); tc != nil || err != nil {
+		t.Error("no cert means plain HTTP")
+	}
+	dir := t.TempDir()
+	cf, kf, first := writeCert(t, dir, "one")
+	tc, err := TLSConfig(cf, kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: &Server{Collector: &Collector{Root: fakeRoot(t)}, Token: "tok"}}
+	go srv.Serve(tls.NewListener(ln, tc))
+	defer srv.Close()
+	get := func(ca *x509.Certificate) (*http.Response, error) {
+		pool := x509.NewCertPool()
+		pool.AddCert(ca)
+		c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
+		return c.Get("https://" + ln.Addr().String() + "/healthz")
+	}
+	if resp, err := get(first); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("healthz over TLS: %v", err)
+	}
+	_, _, second := writeCert(t, dir, "two")
+	os.Chtimes(cf, time.Now().Add(time.Minute), time.Now().Add(time.Minute))
+	if resp, err := get(second); err != nil || resp.StatusCode != 200 {
+		t.Errorf("a renewed cert is picked up without a restart: %v", err)
 	}
 }

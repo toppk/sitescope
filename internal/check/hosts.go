@@ -2,12 +2,16 @@ package check
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/toppk/sitescope/internal/config"
@@ -49,6 +53,10 @@ type Host struct {
 	OS string `json:"os,omitempty"`
 	// WireGuard is on unless set to false.
 	WireGuard *bool `json:"wireguard,omitempty"`
+	// CA is a PEM file that verifies an https agent URL, e.g. the private CA.
+	CA string `json:"ca,omitempty"`
+	// TokenEnv names the variable holding this agent's token (default SITESCOPE_AGENT_TOKEN).
+	TokenEnv string `json:"tokenEnv,omitempty"`
 	// WireGuard peers to ignore (by name or key), e.g. a roaming peer that may sleep.
 	WGIgnore []string `json:"wgIgnore"`
 }
@@ -135,14 +143,33 @@ func (hs *Hosts) build(b *builder) {
 }
 
 func agentCheck(h Host) func(context.Context, *Env) Result {
+	var mu sync.Mutex
+	var client *http.Client
 	return func(ctx context.Context, env *Env) Result {
+		c := env.HTTP
+		if h.CA != "" {
+			mu.Lock()
+			if client == nil {
+				var err error
+				if client, err = caClient(h.CA); err != nil {
+					mu.Unlock()
+					return Critf("agent CA: %v", err)
+				}
+			}
+			c = client
+			mu.Unlock()
+		}
+		token := env.AgentToken
+		if h.TokenEnv != "" {
+			token = os.Getenv(h.TokenEnv)
+		}
 		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimSuffix(h.URL, "/")+"/v1/report", nil)
 		if err != nil {
 			return Critf("%v", err)
 		}
-		req.Header.Set("Authorization", "Bearer "+env.AgentToken)
+		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("User-Agent", userAgent)
-		resp, err := env.HTTP.Do(req)
+		resp, err := c.Do(req)
 		if err != nil {
 			return Critf("agent unreachable: %v", err)
 		}
@@ -157,6 +184,21 @@ func agentCheck(h Host) func(context.Context, *Env) Result {
 		env.Reports.Put(h.Name, &r, env.now())
 		return Okf("up %s", fmtDuration(time.Duration(r.UptimeSec)*time.Second))
 	}
+}
+
+// caClient trusts only the CA in file, for agents with private-CA certificates.
+func caClient(file string) (*http.Client, error) {
+	pem, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("no certificates in %s", file)
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	return &http.Client{Timeout: time.Minute, Transport: tr}, nil
 }
 
 // fromWindow rates the counters between the latest report and one a window earlier.

@@ -16,6 +16,16 @@ The module fills in `hub.listen`, `hub.stateDir`, `hub.vault`,
 `hub.controlSocket`, `hub.controlGroup`, `hub.hostname` and the whole
 `agent` section. You write the rest.
 
+Outside NixOS you write `agent` yourself. Its keys are:
+
+- `listen`;
+- `wgInterface` (`wg0`) and `wireguard` (default on);
+- `postfix` and `knot`, with `knotSocket`;
+- `wgPeers`;
+- the command paths `systemctl`, `wg`, `postqueue` and `knotc`;
+- `tlsCert` and `tlsKey`. With both set, the agent serves HTTPS and picks
+  up a renewed certificate when the file changes.
+
 ## Durations and thresholds
 
 A duration is a string like `"90s"`, `"5m"`, `"12h"`, or a number of
@@ -40,7 +50,7 @@ target) can override it with the same four keys:
 | `hub` | `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL`, `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"` (the scheduler's grid), `concurrency: 8` | `lockedAfter` is how long the vault may stay locked before `hub.vault` warns (negative disables); `refresh` is the page's reload interval in seconds; `concurrency` caps checks running at once |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"`, `digestTime` | `digestTime` is `"HH:MM"`, local time; unset means no digest |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`; `visibility` is `public`, `grouped` (default) or `private`; first match wins; unmatched checks are public under their area's name. See [visibility](web.html#visibility). Areas are `dns mail http tls domains hosts hygiene cloud hub` |
-| `hosts` | `hosts: [{name, url, postfix, knot, os, wireguard, wgIgnore}]` (`os` defaults to `"nixos"`; any other os-release ID drops the NixOS checks; `wireguard: false` drops the handshake check), `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
+| `hosts` | `hosts: [{name, url, postfix, knot, os, wireguard, ca, tokenEnv, wgIgnore}]` (`os` defaults to `"nixos"`; any other os-release ID drops the NixOS checks; `wireguard: false` drops the handshake check; `ca` is a PEM file that verifies an `https` agent URL; `tokenEnv` names the variable with this agent's own token), `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | `delegation` is the expected NS names |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | |
 | `tls` | `targets: [{name, host, port, starttls, families, alpn}]`, `days {20,7}` | `port` 443, or 25 with `starttls: "smtp"`; `families` `["4","6"]`; `alpn: "h2"` warns unless h2 is chosen |
@@ -58,7 +68,8 @@ From `services.sitescope.environmentFile`:
 
 | variable | used by |
 |---|---|
-| `SITESCOPE_AGENT_TOKEN` | the hub and every agent; the same value everywhere |
+| `SITESCOPE_AGENT_TOKEN` | the hub and every agent; one shared value, except for hosts that set `tokenEnv` |
+| a host's `tokenEnv` | the hub, for that agent; on the agent itself it is still `SITESCOPE_AGENT_TOKEN` |
 | `SITESCOPE_HEARTBEAT_URL` | the hub; GET every `hub.heartbeatInterval` while healthy |
 | `SITESCOPE_CONFIG` | the CLI; config path when `-config` isn't given |
 

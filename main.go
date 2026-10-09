@@ -167,7 +167,11 @@ func runAgent(args []string) error {
 	}
 	s := &agent.Server{Collector: &agent.Collector{Cfg: cfg.Agent}, Token: os.Getenv("SITESCOPE_AGENT_TOKEN"),
 		Version: version, Peers: peers}
-	return agent.Run(ctx, cfg.Agent.Listen, s)
+	tc, err := agent.TLSConfig(cfg.Agent.TLSCert, cfg.Agent.TLSKey)
+	if err != nil {
+		return err
+	}
+	return agent.Run(ctx, cfg.Agent.Listen, s, tc)
 }
 
 func runCheck(args []string) error {

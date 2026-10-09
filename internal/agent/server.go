@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -95,7 +97,47 @@ func Listen(ctx context.Context, addr string) (net.Listener, error) {
 	return lc.Listen(ctx, "tcp", addr)
 }
 
-func Run(ctx context.Context, addr string, s *Server) error {
+// certFile serves a key pair from disk, reloading it when the cert's mtime changes.
+type certFile struct {
+	cert, key string
+	mu        sync.Mutex
+	mtime     time.Time
+	pair      *tls.Certificate
+}
+
+func (c *certFile) get(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	st, err := os.Stat(c.cert)
+	if err != nil {
+		return nil, err
+	}
+	if c.pair == nil || !st.ModTime().Equal(c.mtime) {
+		pair, err := tls.LoadX509KeyPair(c.cert, c.key)
+		if err != nil {
+			return nil, err
+		}
+		c.pair, c.mtime = &pair, st.ModTime()
+	}
+	return c.pair, nil
+}
+
+// TLSConfig is nil when the agent serves plain HTTP.
+func TLSConfig(cert, key string) (*tls.Config, error) {
+	if cert == "" && key == "" {
+		return nil, nil
+	}
+	if cert == "" || key == "" {
+		return nil, errors.New("agent.tlsCert and agent.tlsKey go together")
+	}
+	cf := &certFile{cert: cert, key: key}
+	if _, err := cf.get(nil); err != nil {
+		return nil, err
+	}
+	return &tls.Config{GetCertificate: cf.get, MinVersion: tls.VersionTLS12}, nil
+}
+
+func Run(ctx context.Context, addr string, s *Server, tc *tls.Config) error {
 	if s.Token == "" {
 		return errors.New("SITESCOPE_AGENT_TOKEN is not set")
 	}
@@ -106,6 +148,9 @@ func Run(ctx context.Context, addr string, s *Server) error {
 	if err != nil {
 		return err
 	}
+	if tc != nil {
+		ln = tls.NewListener(ln, tc)
+	}
 	srv := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -113,7 +158,7 @@ func Run(ctx context.Context, addr string, s *Server) error {
 		defer cancel()
 		srv.Shutdown(sctx)
 	}()
-	slog.Info("agent listening", "addr", addr)
+	slog.Info("agent listening", "addr", addr, "tls", tc != nil)
 	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

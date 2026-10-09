@@ -156,6 +156,9 @@ type Agent struct {
 	KnotSocket  string `json:"knotSocket"`
 	// WireGuard is on unless set to false.
 	WireGuard *bool `json:"wireguard,omitempty"`
+	// TLSCert and TLSKey switch the agent to HTTPS; both are re-read when the cert file changes.
+	TLSCert string `json:"tlsCert"`
+	TLSKey  string `json:"tlsKey"`
 	// WGPeers names peers in metric labels; hosts.wgPeers is used when this is empty.
 	WGPeers map[string]string `json:"wgPeers"`
 	// Command paths; the module fills these from nixpkgs.

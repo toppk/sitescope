@@ -2,10 +2,13 @@ package check
 
 import (
 	"context"
+	"encoding/pem"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -655,5 +658,36 @@ func TestCFTokensCheck(t *testing.T) {
 	env := &Env{HTTP: srv.Client(), Secret: func(string) (string, bool) { return "x", true }}
 	if r := cfTokensCheck(c)(context.Background(), env); r.Status != OK || !strings.HasSuffix(r.Message, "; certbot never expires") {
 		t.Errorf("account tokens = %+v", r)
+	}
+}
+
+func TestAgentCheckCA(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer guest-token" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Write([]byte(`{"host": "guest", "uptimeSec": 7200}`))
+	}))
+	defer srv.Close()
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o644)
+	t.Setenv("SS_TEST_GUEST_TOKEN", "guest-token")
+	env := &Env{HTTP: http.DefaultClient, AgentToken: "shared", Reports: &Reports{}}
+	h := Host{Name: "guest", URL: srv.URL, CA: ca, TokenEnv: "SS_TEST_GUEST_TOKEN"}
+	if r := agentCheck(h)(context.Background(), env); r.Status != OK {
+		t.Errorf("private CA and own token = %+v", r)
+	}
+	h.TokenEnv = ""
+	if r := agentCheck(h)(context.Background(), env); r.Status != Crit || !strings.Contains(r.Message, "401") {
+		t.Errorf("the shared token is not this agent's = %+v", r)
+	}
+	h.CA, h.TokenEnv = "", "SS_TEST_GUEST_TOKEN"
+	if r := agentCheck(h)(context.Background(), env); r.Status != Crit || !strings.Contains(r.Message, "certificate") {
+		t.Errorf("without the CA the cert is untrusted = %+v", r)
+	}
+	h.CA = filepath.Join(t.TempDir(), "missing.pem")
+	if r := agentCheck(h)(context.Background(), env); r.Status != Crit || !strings.Contains(r.Message, "agent CA") {
+		t.Errorf("missing CA file = %+v", r)
 	}
 }
