@@ -89,6 +89,30 @@ For devices and private services, a target can also set:
 - `redirect`: where the response must redirect to, relative to the URL or
   absolute. Any 3xx status then passes unless `expectStatus` is set.
 
+## Devices
+
+Area `devices`, every minute, for things on the network that run no
+agent: printers, cameras, a picture frame.
+
+- `ping.NAME` (section `ping`) sends `count` (3) ICMP echo requests to
+  `host`, IPv4 first unless `family` is `"6"`. All lost is crit; `loss` is
+  `{50, 100}` % and `rtt`, the average in ms, is off unless set. It uses an
+  unprivileged ICMP socket, so the hub needs no capability, but its group
+  must be within `net.ipv4.ping_group_range` (Fedora allows every group).
+  Otherwise the check is unknown and says why.
+- `tcp.NAME` (section `tcp`) connects to `host:port` and closes again,
+  e.g. a camera's RTSP port 554. Crit when the connection fails.
+
+A device that sleeps, like a picture frame, sets `seenWithin`, e.g.
+`"6h"`. A failure is then ok while the device answered within that
+window, and the message says when it was last seen. After a hub restart
+the window starts again from the restart.
+
+```json
+"ping": {"targets": [{"name": "printer.lan"}, {"name": "frame.lan", "seenWithin": "6h"}]},
+"tcp": {"targets": [{"name": "camera.lan", "port": 554}]}
+```
+
 ## Mail
 
 | id | interval | checks |

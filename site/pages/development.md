@@ -1,7 +1,7 @@
 ---
 title: Development
 eyebrow: Reference
-lede: Go standard library plus five dependencies, built with Nix. Here is how the code is laid out and how to work on it.
+lede: Go standard library plus six dependencies, built with Nix. Here is how the code is laid out and how to work on it.
 description: Building, testing and the code layout of sitescope.
 ---
 
@@ -36,7 +36,7 @@ The binary is built with `CGO_ENABLED=0` and `-trimpath`. Bump
 build prints the new one.
 
 Dependencies: `filippo.io/age`, `golang.org/x/crypto` (bcrypt, terminal),
-`golang.org/x/sys`, `github.com/miekg/dns` and `go.etcd.io/bbolt`.
+`golang.org/x/sys`, `golang.org/x/net` (ICMP), `github.com/miekg/dns` and `go.etcd.io/bbolt`.
 
 ## Versions and releases
 

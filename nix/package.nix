@@ -17,7 +17,7 @@ buildGoModule {
       ../testdata
     ];
   };
-  vendorHash = "sha256-8nlEbKeJPXQZxb6Ohz7y4BTMtS9RgXTgtGIZWwyNKeY=";
+  vendorHash = "sha256-1Yg/116jaWm7yUx59XP43Aswv/8PpDt4r+YI9EKK5/0=";
   env.CGO_ENABLED = 0;
   flags = [ "-trimpath" ];
   ldflags = [

@@ -12,7 +12,7 @@ import (
 // Areas in display order, with the public name used when config.public is empty.
 var Areas = []struct{ ID, Name string }{
 	{"dns", "DNS"}, {"mail", "Mail"}, {"http", "Web"}, {"tls", "Certificates"},
-	{"domains", "Domains"}, {"hosts", "Servers"}, {"hygiene", "Maintenance"}, {"cloud", "Hosting account"},
+	{"domains", "Domains"}, {"hosts", "Servers"}, {"devices", "Devices"}, {"hygiene", "Maintenance"}, {"cloud", "Hosting account"},
 	{"hub", "Monitoring"},
 }
 
@@ -31,6 +31,8 @@ func init() {
 	config.Register("ct", func() config.Section { return new(CT) })
 	config.Register("http", func() config.Section { return new(HTTP) })
 	config.Register("mail", func() config.Section { return new(Mail) })
+	config.Register("ping", func() config.Section { return new(Ping) })
+	config.Register("tcp", func() config.Section { return new(TCP) })
 	config.Register("linode", func() config.Section { return new(Linode) })
 	config.Register("cloudflare", func() config.Section { return new(Cloudflare) })
 }

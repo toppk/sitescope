@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"encoding/pem"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -833,5 +834,65 @@ func TestHTTPDeviceOptions(t *testing.T) {
 		if r := run(tc.tg); r.Status != tc.want || !strings.Contains(r.Message, tc.msg) {
 			t.Errorf("%s = %v %q, want %v %q", tc.name, r.Status, r.Message, tc.want, tc.msg)
 		}
+	}
+}
+
+func TestPingAndTCP(t *testing.T) {
+	if r := EvalPing("192.0.2.9", 3, nil, Threshold{Warn: 50, Crit: 100}, Threshold{}); r.Status != Crit || !strings.Contains(r.Message, "no reply to 3") {
+		t.Errorf("no replies = %+v", r)
+	}
+	r := EvalPing("192.0.2.9", 3, []time.Duration{2 * time.Millisecond, 4 * time.Millisecond}, Threshold{Warn: 50, Crit: 100}, Threshold{Warn: 2, Crit: 10})
+	if r.Status != Warn || r.Message != "192.0.2.9: 2/3 replies, 33% lost, rtt 3.0ms" {
+		t.Errorf("slow, one lost = %+v", r)
+	}
+
+	rtts, err := Echo(context.Background(), net.ParseIP("127.0.0.1"), 2)
+	switch {
+	case err != nil && errors.Is(err, os.ErrPermission):
+		t.Logf("no unprivileged ICMP here: %v", err)
+	case err != nil || len(rtts) != 2:
+		t.Errorf("ping localhost = %v, %v", rtts, err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	if r := tcpCheck("127.0.0.1", port)(context.Background(), &Env{}); r.Status != OK {
+		t.Errorf("open port = %+v", r)
+	}
+	ln.Close()
+	if r := tcpCheck("127.0.0.1", port)(context.Background(), &Env{}); r.Status != Crit {
+		t.Errorf("closed port = %+v", r)
+	}
+}
+
+func TestSeenWithin(t *testing.T) {
+	now := time.Unix(1791500000, 0)
+	env := &Env{Now: func() time.Time { return now }}
+	up := true
+	run := seenWithin(6*time.Hour, func(context.Context, *Env) Result {
+		if up {
+			return Okf("up")
+		}
+		return Critf("no reply")
+	})
+	step := func(d time.Duration) Result { now = now.Add(d); return run(context.Background(), env) }
+	up = false
+	if r := step(0); r.Status != OK || !strings.Contains(r.Message, "not seen since the hub started") {
+		t.Errorf("down at start = %+v", r)
+	}
+	if r := step(7 * time.Hour); r.Status != Crit {
+		t.Errorf("never seen for 7h = %+v", r)
+	}
+	up = true
+	step(time.Minute)
+	up = false
+	if r := step(5 * time.Hour); r.Status != OK || !strings.Contains(r.Message, "last seen 5h00m ago") {
+		t.Errorf("asleep 5h = %+v", r)
+	}
+	if r := step(2 * time.Hour); r.Status != Crit || !strings.Contains(r.Message, "no reply; last seen 7h00m ago") {
+		t.Errorf("gone 7h = %+v", r)
 	}
 }
