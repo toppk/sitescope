@@ -90,11 +90,25 @@ func TestStatusCompat(t *testing.T) {
 		t.Errorf("a 1.3.0 field changed shape:\nwant %s\ngot  %s", b, out)
 	}
 
+	// /healthz both ways: this hub serves 1.3.0's bytes, and this verify accepts them
+	healthz, err := os.ReadFile("../../testdata/compat/healthz-1.3.0.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := testHub(t)
 	h.nextWake.Store(time.Now().Unix())
 	w := httptest.NewRecorder()
 	h.healthz(w, httptest.NewRequest("GET", "/healthz", nil))
-	if w.Code != 200 || w.Body.String() != "ok\n" {
-		t.Errorf("/healthz = %d %q, want 200 \"ok\\n\"", w.Code, w.Body.String())
+	if w.Code != 200 || w.Body.String() != string(healthz) {
+		t.Errorf("/healthz = %d %q, want 200 %q", w.Code, w.Body.String(), healthz)
+	}
+	old := http.NewServeMux()
+	old.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write(healthz) })
+	old.HandleFunc("GET /status.json", func(w http.ResponseWriter, _ *http.Request) { w.Write(b) })
+	srv := httptest.NewServer(old)
+	defer srv.Close()
+	var vout bytes.Buffer
+	if err := Verify(context.Background(), srv.Client(), srv.URL, Expect{Version: "1.3.0", Services: 2, Checks: 1}, &vout); err != nil {
+		t.Errorf("verify against a 1.3.0 hub = %v\n%s", err, &vout)
 	}
 }
