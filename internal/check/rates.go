@@ -212,6 +212,8 @@ func topUnits(r *report.Report, n int) string {
 
 func fmtBytes(b float64) string {
 	switch {
+	case b >= 1<<40:
+		return fmt.Sprintf("%.1f TiB", b/(1<<40))
 	case b >= 1<<30:
 		return fmt.Sprintf("%.1f GiB", b/(1<<30))
 	case b >= 1<<20:

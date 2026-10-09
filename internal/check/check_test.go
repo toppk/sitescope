@@ -133,7 +133,7 @@ func rep() *report.Report {
 
 func TestHostEvals(t *testing.T) {
 	r := rep()
-	if got := EvalDisk(r, Threshold{Warn: 80, Crit: 90}); got.Status != Crit || !strings.Contains(got.Message, "inodes 95%") {
+	if got := EvalDisk(r, Threshold{Warn: 80, Crit: 90}, nil); got.Status != Crit || !strings.Contains(got.Message, "inodes 95%") {
 		t.Errorf("disk = %+v", got)
 	}
 	if got := EvalMemory(r, Threshold{Warn: 90, Crit: 97}); got.Status != Warn {
@@ -715,7 +715,7 @@ func TestAgentReportCompat(t *testing.T) {
 	}
 	r, _ := env.Reports.Get("alpha")
 	for name, res := range map[string]Result{
-		"disk": EvalDisk(r, Threshold{Warn: 80, Crit: 90}), "load": EvalLoad(r, Threshold{Warn: 2, Crit: 4}), "units": EvalUnits(r),
+		"disk": EvalDisk(r, Threshold{Warn: 80, Crit: 90}, nil), "load": EvalLoad(r, Threshold{Warn: 2, Crit: 4}), "units": EvalUnits(r),
 	} {
 		if res.Status != OK {
 			t.Errorf("%s on a 1.3.0 report = %+v", name, res)
@@ -1019,6 +1019,52 @@ func TestLocalHost(t *testing.T) {
 	}
 	for _, bad := range []string{`{"name": "x", "local": true, "url": "http://a"}`, `{"name": "x"}`} {
 		if _, err := config.Parse([]byte(`{"hosts": {"hosts": [` + bad + `]}}`)); err == nil {
+			t.Errorf("%s should not validate", bad)
+		}
+	}
+}
+
+func TestDiskRulesAndSkip(t *testing.T) {
+	const gib = 1 << 30
+	r := &report.Report{Disks: []report.Disk{
+		{Mount: "/", UsedPct: 50},
+		{Mount: "/archive", UsedPct: 92, AvailBytes: 1600 * gib},
+		{Mount: "/growing", UsedPct: 70, AvailBytes: 300 * gib},
+		{Mount: "/scratch", UsedPct: 99},
+		{Mount: "/many", UsedPct: 10, InodesPct: 88},
+	}}
+	t80 := Threshold{Warn: 80, Crit: 90}
+	rules := map[string]DiskRule{
+		"/archive": {Free: Threshold{Warn: 1000, Crit: 200}},
+		"/growing": {Free: Threshold{Warn: 500, Crit: 100}, Used: Threshold{Warn: 95, Crit: 98}},
+		"/scratch": {Ignore: true},
+		"/many":    {Inodes: Threshold{Warn: 95, Crit: 99}},
+	}
+	got := EvalDisk(r, t80, rules)
+	if got.Status != Warn || got.Message != "/ 50%, /archive 92% (1.6 TiB free), /growing 70% (300.0 GiB free), /many 10%" {
+		t.Errorf("rules = %v %q", got.Status, got.Message)
+	}
+	rules["/growing"] = DiskRule{Free: Threshold{Warn: 500, Crit: 400}}
+	if got := EvalDisk(r, t80, rules); got.Status != Crit {
+		t.Errorf("under the free crit = %+v", got)
+	}
+	if got := EvalDisk(r, t80, nil); got.Status != Crit {
+		t.Errorf("no rules keeps percent = %+v", got)
+	}
+
+	cfg, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "a", "local": true, "skip": ["swap", "load"],
+		"disks": {"/archive": {"free": {"warn": 1000, "crit": 200}}}}]}, "dns": null}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, _ := Build(cfg)
+	for _, c := range checks {
+		if c.ID == "host.a.swap" || c.ID == "host.a.load" {
+			t.Errorf("%s was skipped", c.ID)
+		}
+	}
+	for _, bad := range []string{`"skip": ["agent"]`, `"disks": {"archive": {}}`} {
+		if _, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "a", "local": true, ` + bad + `}]}}`)); err == nil {
 			t.Errorf("%s should not validate", bad)
 		}
 	}

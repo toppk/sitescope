@@ -165,6 +165,31 @@ CPU, memory pressure, disk I/O and network are rates over `rateWindow`
 a sustained one does. For the first two minutes after the hub or the host
 starts they report "collecting a baseline".
 
+### Per host: skip and disks
+
+A host's `skip` drops checks that don't fit it: any of `disk`, `memory`,
+`swap`, `load`, `units`, `cgroups`, `cpu`, `pressure`, `diskio`,
+`network`, `wireguard`, `reboot`, `nixpkgs`, `updates`, `postfix` or
+`knot`. Swap in use is a poor signal on a host with zram or plenty of free
+memory. There, `pressure` (time stalled on memory, and pages swapped back
+in) is what matters, so `"skip": ["swap"]` is reasonable.
+
+A host's `disks` sets thresholds per mount point, for volumes where one
+percentage doesn't fit:
+
+- `free`: GiB available, warn and crit at or below. With only `free` set,
+  the percentage used isn't rated. The message shows the free space.
+- `used`, `inodes`: percent, replacing `hosts.disk` for this mount.
+- `ignore: true`: leave the mount out.
+
+```json
+"disks": {
+  "/archive": {"used": {"warn": 97, "crit": 99}},
+  "/data": {"free": {"warn": 1000, "crit": 250}},
+  "/scratch": {"ignore": true}
+}
+```
+
 ### Units and timers
 
 A host's `units` names systemd units that must be up, beyond "no failed

@@ -65,7 +65,24 @@ type Host struct {
 	Units []Unit `json:"units,omitempty"`
 	// Local is the hub's own host, collected in-process with the agent settings instead of polled.
 	Local bool `json:"local,omitempty"`
+	// Skip names report checks not to create for this host, e.g. "swap".
+	Skip []string `json:"skip,omitempty"`
+	// Disks overrides the disk thresholds per mount point.
+	Disks map[string]DiskRule `json:"disks,omitempty"`
 }
+
+// DiskRule replaces hosts.disk for one mount; unset parts keep it.
+type DiskRule struct {
+	// Free is GiB available: warn and crit at or below. With only Free set, percent used isn't rated.
+	Free   Threshold `json:"free"`
+	Used   Threshold `json:"used"`   // percent
+	Inodes Threshold `json:"inodes"` // percent
+	Ignore bool      `json:"ignore,omitempty"`
+}
+
+// skippable are the per-host checks a host's skip may name.
+var skippable = []string{"disk", "memory", "swap", "load", "units", "cgroups", "cpu", "pressure", "diskio", "network",
+	"wireguard", "reboot", "nixpkgs", "updates", "postfix", "knot"}
 
 func (hs *Hosts) Defaults(*config.Config) {
 	hs.Disk = hs.Disk.Or(Threshold{Warn: 80, Crit: 90})
@@ -103,6 +120,16 @@ func (hs *Hosts) Validate() error {
 				return err
 			}
 		}
+		for _, s := range h.Skip {
+			if !slices.Contains(skippable, s) {
+				return fmt.Errorf("hosts: %s skip %q, want one of %s", h.Name, s, strings.Join(skippable, ", "))
+			}
+		}
+		for m := range h.Disks {
+			if !strings.HasPrefix(m, "/") {
+				return fmt.Errorf("hosts: %s disks %q is not a mount point", h.Name, m)
+			}
+		}
 	}
 	return nil
 }
@@ -128,16 +155,22 @@ func (hs *Hosts) build(b *builder) {
 				Probes: []Probe{urlProbe(h.URL, "GET /v1/report with the agent token")}, Run: agentCheck(h)})
 		}
 		d := func(id, name, area, section string, eval func(*report.Report, time.Time) Result) {
+			if slices.Contains(h.Skip, id) {
+				return
+			}
 			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: area, Group: h.Name,
 				DependsOn: agentID, Run: fromReport(h.Name, section, stale, eval)})
 		}
-		d("disk", "disk usage", "hosts", "disks", func(r *report.Report, _ time.Time) Result { return EvalDisk(r, hs.Disk) })
+		d("disk", "disk usage", "hosts", "disks", func(r *report.Report, _ time.Time) Result { return EvalDisk(r, hs.Disk, h.Disks) })
 		d("memory", "memory", "hosts", "memory", func(r *report.Report, _ time.Time) Result { return EvalMemory(r, hs.Memory) })
 		d("swap", "swap", "hosts", "memory", func(r *report.Report, _ time.Time) Result { return EvalSwap(r, hs.Swap) })
 		d("load", "load average", "hosts", "load", func(r *report.Report, _ time.Time) Result { return EvalLoad(r, hs.Load) })
 		d("units", "failed systemd units", "hosts", "units", func(r *report.Report, _ time.Time) Result { return EvalUnits(r) })
 		d("cgroups", "unit memory", "hosts", "cgroups", func(r *report.Report, _ time.Time) Result { return EvalUnitMemory(r, hs.UnitMemory) })
 		w := func(id, name string, eval func(Rates) Result) {
+			if slices.Contains(h.Skip, id) {
+				return
+			}
 			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: "hosts", Group: h.Name,
 				DependsOn: agentID, Run: fromWindow(h.Name, stale, hs.RateWindow.D(), eval)})
 		}
@@ -318,18 +351,31 @@ func fromReport(host, section string, stale time.Duration, eval func(*report.Rep
 	}
 }
 
-func EvalDisk(r *report.Report, t Threshold) Result {
+func EvalDisk(r *report.Report, t Threshold, rules map[string]DiskRule) Result {
 	if len(r.Disks) == 0 {
 		return Unknownf("no filesystems reported")
 	}
 	worst, parts := OK, []string{}
 	for _, d := range r.Disks {
-		s := Worst(t.Above(d.UsedPct), t.Above(d.InodesPct))
-		worst = Worst(worst, s)
-		parts = append(parts, fmt.Sprintf("%s %.0f%%", d.Mount, d.UsedPct))
-		if d.InodesPct >= t.Warn && t.Warn > 0 {
-			parts[len(parts)-1] += fmt.Sprintf(" (inodes %.0f%%)", d.InodesPct)
+		rule := rules[d.Mount]
+		if rule.Ignore {
+			continue
 		}
+		used, inodes := rule.Used, rule.Inodes.Or(t)
+		if rule.Free == (Threshold{}) || used != (Threshold{}) {
+			used = used.Or(t)
+		}
+		s := Worst(used.Above(d.UsedPct), inodes.Above(d.InodesPct))
+		part := fmt.Sprintf("%s %.0f%%", d.Mount, d.UsedPct)
+		if rule.Free != (Threshold{}) {
+			s = Worst(s, rule.Free.Below(float64(d.AvailBytes)/(1<<30)))
+			part += " (" + fmtBytes(float64(d.AvailBytes)) + " free)"
+		}
+		if d.InodesPct >= inodes.Warn && inodes.Warn > 0 {
+			part += fmt.Sprintf(" (inodes %.0f%%)", d.InodesPct)
+		}
+		worst = Worst(worst, s)
+		parts = append(parts, part)
 	}
 	return Rated(worst, "%s", strings.Join(parts, ", "))
 }

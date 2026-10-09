@@ -51,7 +51,8 @@ to a separate agent later by replacing `local: true` with a `url`.
   "alerts": {"enabled": true, "from": "sitescope@home.example", "to": ["me@home.example"],
              "smtp": "127.0.0.1:25", "ntfy": {"enabled": true}},
   "hosts": {"hosts": [{
-    "name": "server", "local": true, "os": "fedora", "wireguard": false,
+    "name": "server", "local": true, "os": "fedora", "wireguard": false, "skip": ["swap"],
+    "disks": {"/data": {"free": {"warn": 500, "crit": 100}}},
     "units": [{"name": "backup.timer", "user": true, "maxAge": "26h"},
               {"name": "fwupd-refresh.timer", "severity": "warn"}]
   }]},
@@ -70,7 +71,8 @@ to a separate agent later by replacing `local: true` with a `url`.
   the hub has none, keep only the admin login in the vault
   (`sitescope vault set-password`). Set `lockedAfter` negative, so a
   vault that stays locked after a reboot neither warns nor shows a banner
-  on the page. A secret the hub needs in order to monitor or alert, like
+  on the page, and the hub sends no "unlock" email when it starts. A
+  secret the hub needs in order to monitor or alert, like
   `SITESCOPE_NTFY_URL`, goes in the environment file instead.
 - **Ping** needs the user's group within `net.ipv4.ping_group_range`.
   Fedora allows every group.
