@@ -3,7 +3,7 @@
 Planned capabilities, roughly in release order. This is a direction, not a
 promise: the order changes as needs do.
 
-## 1.3.0: modules
+## 1.3.0: modules (released)
 
 No behaviour change; groundwork for what follows.
 
@@ -14,7 +14,7 @@ No behaviour change; groundwork for what follows.
 - A notifier interface, so alerts can go somewhere other than email.
 - Agents over TLS, with a CA and a token for each host on the hub.
 
-## 1.4.0: devices and services
+## 1.4.0: devices and services (released)
 
 - systemd units that must be running, and timers: last run, result, next
   run.
