@@ -14,6 +14,23 @@ nix build            # static binary, tests run in the sandbox
 nix flake check      # the package, and the module evaluated as hub and as agent
 ```
 
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: the
+tests, a plain `go build` and a Nix build that must both report
+`VERSION+rev`, `nix flake check`, and a check that the Nix binary is
+statically linked.
+
+### Compatibility
+
+During a rolling update a new hub reads old agents' reports and the
+reverse, and `sitescope verify` and other hubs read `/healthz` and
+`/status.json` from any recent release. So fields in the agent report and
+`/status.json` are only added, never renamed, removed or retyped, and new
+report fields are optional to the hub. `testdata/compat/` holds each
+format as of 1.3.0. `TestReportCompat` and `TestStatusCompat` fail when a field
+is removed, renamed or retyped, and `TestAgentReportCompat` runs the hub's checks
+on the old report. When either protocol changes on purpose, add a fixture
+for the new release and a test for what the old side does with it.
+
 The binary is built with `CGO_ENABLED=0` and `-trimpath`. Bump
 `vendorHash` in `nix/package.nix` whenever `go.sum` changes; the failing
 build prints the new one.

@@ -691,3 +691,24 @@ func TestAgentCheckCA(t *testing.T) {
 		t.Errorf("missing CA file = %+v", r)
 	}
 }
+
+func TestAgentReportCompat(t *testing.T) {
+	b, err := os.ReadFile("../../testdata/compat/report-1.3.0.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(b) }))
+	defer srv.Close()
+	env := &Env{HTTP: http.DefaultClient, Reports: &Reports{}}
+	if r := agentCheck(Host{Name: "alpha", URL: srv.URL})(context.Background(), env); r.Status != OK {
+		t.Fatalf("a 1.3.0 agent's report = %+v", r)
+	}
+	r, _ := env.Reports.Get("alpha")
+	for name, res := range map[string]Result{
+		"disk": EvalDisk(r, Threshold{Warn: 80, Crit: 90}), "load": EvalLoad(r, Threshold{Warn: 2, Crit: 4}), "units": EvalUnits(r),
+	} {
+		if res.Status != OK {
+			t.Errorf("%s on a 1.3.0 report = %+v", name, res)
+		}
+	}
+}

@@ -43,8 +43,11 @@ front of it.
     ```
 
 `/healthz`
-:   200 while the scheduler is ticking, 503 if it has stalled. For the
-    proxy's health checks.
+:   200 with the body `ok` while the scheduler is ticking, 503 if it has
+    stalled. For the proxy's health checks and `sitescope verify`.
+
+Both are read by other tools and hubs, so fields are only ever added:
+none is renamed or removed between releases.
 
 ## Visibility
 

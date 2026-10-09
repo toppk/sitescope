@@ -1,0 +1,34 @@
+{
+  "host": "alpha",
+  "time": "2026-10-08T12:00:00Z",
+  "uptimeSec": 86400.5,
+  "load": [0.42, 0.3, 0.25],
+  "cpus": 4,
+  "memory": {
+    "totalKB": 8000000, "availableKB": 5000000, "freeKB": 1000000, "buffersKB": 100000,
+    "cachedKB": 3000000, "shmemKB": 20000, "dirtyKB": 300, "swapTotalKB": 2000000, "swapFreeKB": 1900000
+  },
+  "disks": [
+    {"device": "/dev/sda1", "mount": "/", "fsType": "ext4", "totalBytes": 100000000000, "availBytes": 60000000000,
+     "usedPct": 40, "inodesPct": 5.5, "files": 6000000, "filesFree": 5670000}
+  ],
+  "failedUnits": [],
+  "os": {"id": "nixos", "versionId": "26.05", "name": "NixOS"},
+  "system": {
+    "booted": "/nix/store/aaaa-nixos-system", "current": "/nix/store/aaaa-nixos-system", "rebootNeeded": false,
+    "nixosVersion": "26.05.20261001.abcdef0", "nixpkgsDate": "20261001"
+  },
+  "wireguard": [{"publicKey": "cGVlcg==", "latestHandshake": 1791460000, "rxBytes": 1000, "txBytes": 2000}],
+  "postfix": {"messages": 1, "queues": {"deferred": 1}, "oldestAgeSec": 120},
+  "knot": [{"name": "example.org.", "role": "primary", "serial": 2026100801, "expiresInSec": -1}],
+  "counters": {
+    "bootTime": 1791373600,
+    "cpu": [{"user": 100, "nice": 1, "system": 50, "idle": 10000, "iowait": 3, "irq": 0.5, "softirq": 1.5, "steal": 0}],
+    "pressure": {"cpu": {"someTotalUs": 1000, "fullTotalUs": 0, "someAvg60": 0.5, "fullAvg60": 0}},
+    "vmstat": {"oomKill": 0, "pswpin": 10, "pswpout": 20, "pgmajfault": 300},
+    "disks": [{"device": "sda", "reads": 1000, "writes": 2000, "readBytes": 4096000, "writtenBytes": 8192000, "ioTimeMs": 5000}],
+    "net": [{"device": "eth0", "rxBytes": 1000000, "txBytes": 2000000, "rxErrs": 0, "txErrs": 0, "rxDrop": 1, "txDrop": 0}]
+  },
+  "units": [{"unit": "sitescope.service", "bytes": 30000000, "maxBytes": 268435456}],
+  "errors": {"knot": "socket busy"}
+}
