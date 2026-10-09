@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -968,5 +969,23 @@ func TestIPP(t *testing.T) {
 	}
 	if post, p, _ := ippURLs("ipps://printer.lan/ipp/print"); post != "https://printer.lan:631/ipp/print" || p != "ipps://printer.lan:631/ipp/print" {
 		t.Errorf("ipps URLs = %s %s", post, p)
+	}
+}
+
+// A 1.4.0 hub polling a 1.3.0 agent: the new checks say the agent needs upgrading, and nothing else breaks.
+func TestOlderAgentOnNewChecks(t *testing.T) {
+	b, err := os.ReadFile("../../testdata/compat/report-1.3.0.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r report.Report
+	json.Unmarshal(b, &r)
+	now := time.Unix(1791500000, 0)
+	for name, res := range map[string]Result{
+		"unit": EvalUnit(&r, now, Unit{Name: "sshd.service"}), "kernel": EvalKernel(&r), "packages": EvalPackages(&r, now, Threshold{Warn: 30, Crit: 90}),
+	} {
+		if res.Status != Unknown || !strings.Contains(res.Message, "1.4.0") {
+			t.Errorf("%s on a 1.3.0 report = %+v", name, res)
+		}
 	}
 }

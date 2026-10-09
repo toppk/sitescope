@@ -26,9 +26,11 @@ reverse, and `sitescope verify` and other hubs read `/healthz` and
 `/status.json` from any recent release. So fields in the agent report and
 `/status.json` are only added, never renamed, removed or retyped, and new
 report fields are optional to the hub. `testdata/compat/` holds each
-format as of 1.3.0. `TestReportCompat` and `TestStatusCompat` fail when a field
-is removed, renamed or retyped, and `TestAgentReportCompat` runs the hub's checks
-on the old report. When either protocol changes on purpose, add a fixture
+format as of each release that changed it. `TestReportCompat` and
+`TestStatusCompat` fail when a field is removed, renamed or retyped.
+`TestAgentReportCompat` runs the hub's checks on an old report, and
+`TestOlderAgentOnNewChecks` checks that new checks report an old agent as
+unknown, saying it needs upgrading. When either protocol changes on purpose, add a fixture
 for the new release and a test for what the old side does with it.
 
 The binary is built with `CGO_ENABLED=0` and `-trimpath`. Bump
