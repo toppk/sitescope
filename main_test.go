@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,9 +19,9 @@ func TestHubConfigPaths(t *testing.T) {
 		return fs
 	}
 
-	cfg, err := hubConfig(parse(), missing)
-	if err != nil || cfg.Hub.ControlSocket != "/run/sitescope/control.sock" || cfg.Hub.Vault != "/var/lib/sitescope/vault.age" {
-		t.Errorf("missing default config = %+v, %v", cfg, err)
+	_, err := hubConfig(parse(), missing)
+	if err == nil || !strings.Contains(err.Error(), "-config FILE, set $SITESCOPE_CONFIG, or create "+missing) {
+		t.Errorf("missing default config: %v", err)
 	}
 	if _, err := hubConfig(parse("-config", missing), missing); err == nil {
 		t.Error("a missing -config file should fail")
@@ -28,7 +29,7 @@ func TestHubConfigPaths(t *testing.T) {
 
 	p := filepath.Join(dir, "config.json")
 	os.WriteFile(p, []byte(`{"hub": {"stateDir": "/home/op/server/sitescope", "controlSocket": "/run/user/1000/sitescope.sock"}}`), 0o600)
-	cfg, err = hubConfig(parse(), p)
+	cfg, err := hubConfig(parse(), p)
 	if err != nil || cfg.Hub.ControlSocket != "/run/user/1000/sitescope.sock" || cfg.Hub.Vault != "/home/op/server/sitescope/vault.age" {
 		t.Errorf("config paths = %+v, %v", cfg.Hub, err)
 	}

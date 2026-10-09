@@ -126,13 +126,13 @@ func loadConfig(fs *flag.FlagSet, args []string) (*config.Config, error) {
 	return config.Load(*path)
 }
 
-// hubConfig reads the hub's config for the operator commands; a missing default file means built-in paths.
+// hubConfig reads the hub's config for the operator commands; without one they could act on the wrong hub.
 func hubConfig(fs *flag.FlagSet, path string) (*config.Config, error) {
 	explicit := os.Getenv("SITESCOPE_CONFIG") != ""
 	fs.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "config" })
 	cfg, err := config.Load(path)
 	if err != nil && !explicit && errors.Is(err, os.ErrNotExist) {
-		return config.Parse([]byte("{}"))
+		return nil, fmt.Errorf("no hub config: give -config FILE, set $SITESCOPE_CONFIG, or create %s", path)
 	}
 	return cfg, err
 }
