@@ -110,6 +110,10 @@ func EvalUnit(r *report.Report, now time.Time, u Unit) Result {
 		return bad("%s, over %s; %s", last, fmtDuration(u.MaxAge.D()), next)
 	}
 	if s.NextRun == 0 {
+		// a calendar timer is rescheduled only when its run finishes
+		if s.Running {
+			return Okf("%s", last)
+		}
 		return bad("%s, not scheduled again", last)
 	}
 	if late := now.Sub(at(s.NextRun)); late > overdue {

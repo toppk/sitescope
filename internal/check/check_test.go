@@ -740,6 +740,7 @@ func TestEvalUnit(t *testing.T) {
 		{"failed run", func(s *report.UnitState) { s.Result, s.ExitStatus = "exit-code", 2 }, Unit{Name: "backup.timer"}, Crit, "exit-code, exit status 2"},
 		{"warn severity", func(s *report.UnitState) { s.Result = "exit-code" }, Unit{Name: "backup.timer", Severity: "warn"}, Warn, "failed"},
 		{"running now", func(s *report.UnitState) { s.Result, s.Running = "", true }, Unit{Name: "backup.timer"}, OK, "running now"},
+		{"running, next not set yet", func(s *report.UnitState) { s.LastRun, s.Result, s.Running, s.NextRun = ago(0), "", true, 0 }, Unit{Name: "backup.timer"}, OK, "last run 0s ago, running now"},
 		{"too old", nil, Unit{Name: "backup.timer", MaxAge: config.Duration(2 * time.Hour)}, Crit, "over 2h00m"},
 		{"overdue", func(s *report.UnitState) { s.NextRun = ago(2 * time.Hour) }, Unit{Name: "backup.timer"}, Crit, "overdue by 2h00m"},
 		{"not yet run", func(s *report.UnitState) { s.LastRun, s.Result = 0, "" }, Unit{Name: "backup.timer"}, OK, "not run yet"},
