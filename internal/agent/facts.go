@@ -49,6 +49,8 @@ var pkgDBs = []struct{ manager, path string }{
 	{"dpkg", "/var/lib/dpkg/status"},
 	{"apk", "/lib/apk/db/installed"},
 	{"pacman", "/var/lib/pacman/local"},
+	{"pkg", "/var/db/pkg/local.sqlite"}, // FreeBSD
+	{"pkg_add", "/var/db/pkg"},          // OpenBSD: one directory per package
 }
 
 func (c *Collector) packages(r *report.Report) error {

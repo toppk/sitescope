@@ -2,8 +2,10 @@ package agent
 
 import "golang.org/x/sys/unix"
 
-// Supported is whether this system has what the collectors read: /proc, /sys and systemd.
+// Supported is whether the agent has collectors for this system.
 const Supported = true
+
+var collectors = linuxCollectors
 
 type fsStat struct{ blocks, bfree, bavail, bsize, files, ffree uint64 }
 

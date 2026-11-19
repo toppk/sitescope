@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,7 +47,8 @@ func plain(f func(c *Collector, r *report.Report) error) func(*Collector, contex
 	return func(c *Collector, _ context.Context, r *report.Report) error { return f(c, r) }
 }
 
-var collectors = []collector{
+// linuxCollectors read /proc, /sys and systemd; collectors is set per system in sys_*.go.
+var linuxCollectors = []collector{
 	{"os", nil, plain((*Collector).osRelease)},
 	{"uptime", nil, plain((*Collector).uptime)},
 	{"load", nil, plain((*Collector).load)},
@@ -125,6 +128,9 @@ func (c *Collector) isNixOS() bool {
 
 func (c *Collector) osRelease(r *report.Report) error {
 	b, err := os.ReadFile(c.path("/etc/os-release"))
+	if errors.Is(err, fs.ErrNotExist) && c.Root == "" {
+		return unameRelease(r) // OpenBSD has no os-release
+	}
 	if err != nil {
 		return err
 	}

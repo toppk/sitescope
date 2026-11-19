@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !freebsd && !openbsd
 
 package agent
 
@@ -7,10 +7,12 @@ import (
 	"runtime"
 )
 
-// Supported is whether this system has what the collectors read: /proc, /sys and systemd.
+// Supported is whether the agent has collectors for this system.
 const Supported = false
 
-var errUnsupported = errors.New("the agent's collectors need Linux, not " + runtime.GOOS)
+var collectors = linuxCollectors
+
+var errUnsupported = errors.New("the agent has no collectors for " + runtime.GOOS)
 
 type fsStat struct{ blocks, bfree, bavail, bsize, files, ffree uint64 }
 

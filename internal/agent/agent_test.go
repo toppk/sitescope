@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -104,8 +105,8 @@ func fakeRoot(t *testing.T) string {
 }
 
 func TestCollect(t *testing.T) {
-	if !Supported {
-		t.Skip("disk collection is Linux only")
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
 	}
 	root := fakeRoot(t)
 	c := &Collector{Root: root, Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false", WGInterface: "wg0"}}
@@ -135,6 +136,9 @@ func TestCollect(t *testing.T) {
 }
 
 func TestCollectNotNixOS(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
+	}
 	root := fakeRoot(t)
 	os.Remove(filepath.Join(root, "/run/booted-system"))
 	os.Remove(filepath.Join(root, "/run/current-system"))
@@ -173,6 +177,9 @@ func TestServerAuth(t *testing.T) {
 }
 
 func TestCounters(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
+	}
 	c := &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false"}}
 	r := c.Collect(context.Background())
 	k := r.Counters
@@ -254,8 +261,8 @@ func validProm(t *testing.T, text string) map[string]int {
 }
 
 func TestMetrics(t *testing.T) {
-	if !Supported {
-		t.Skip("disk collection is Linux only")
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
 	}
 	c := &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false"}}
 	r := c.Collect(context.Background())
@@ -345,6 +352,9 @@ func TestAgentTLS(t *testing.T) {
 }
 
 func TestUnits(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
+	}
 	bin := filepath.Join(t.TempDir(), "systemctl")
 	os.WriteFile(bin, []byte(`#!/bin/sh
 case "$*" in
@@ -388,6 +398,9 @@ esac
 }
 
 func TestKernelAndPackages(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
+	}
 	root := fakeRoot(t)
 	os.Remove(filepath.Join(root, "/run/booted-system"))
 	os.Remove(filepath.Join(root, "/run/current-system"))
@@ -427,6 +440,9 @@ func TestKernelAndPackages(t *testing.T) {
 }
 
 func TestCollectorTimeout(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
+	}
 	defer func(old []collector, d time.Duration) { collectors, collectTimeout = old, d }(collectors, collectTimeout)
 	block := make(chan struct{})
 	defer close(block)
@@ -445,8 +461,8 @@ func TestCollectorTimeout(t *testing.T) {
 }
 
 func TestDiskBindOfSubdir(t *testing.T) {
-	if !Supported {
-		t.Skip("disk collection is Linux only")
+	if runtime.GOOS != "linux" {
+		t.Skip("reads a fake /proc and /sys; Linux only")
 	}
 	root := fakeRoot(t)
 	for _, d := range []string{"/data/vol2", "/home/u", "/h2"} {
