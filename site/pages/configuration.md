@@ -355,4 +355,3 @@ Secrets never go in the config. They come from the environment: on NixOS, from
 | `SITESCOPE_NTFY_TOKEN` | the hub, optional: an ntfy access token |
 | `SITESCOPE_HEARTBEAT_URL` | the hub; GET every `hub.heartbeatInterval` while healthy |
 | `SITESCOPE_CONFIG` | the CLI; config path when `-config` isn't given |
-
