@@ -47,7 +47,7 @@ No behaviour change; groundwork for what follows.
   hardening; release tarballs for both on x86-64. The agent stays Linux
   only.
 
-## 1.7.1: the agent on FreeBSD and OpenBSD
+## 1.7.1: the agent on FreeBSD and OpenBSD (released)
 
 - The agent and local hosts on both: disk, memory, swap, load, CPU,
   network, WireGuard, named rc services, package age; FreeBSD's reboot
