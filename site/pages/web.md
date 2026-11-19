@@ -14,7 +14,7 @@ front of it.
 :   The overall status with a count of checks by status, then one
     collapsible section per service showing how many of its checks are ok
     (for example "Mail 11/11"). Inside, checks about the same host or
-    target are folded into a group of their own ("da2 16/17"). Sections
+    target are folded into a group of their own ("alpha 16/17"). Sections
     with a warning or failure open by themselves. What each check
     contributes depends on its visibility, below. Messages are never shown.
 

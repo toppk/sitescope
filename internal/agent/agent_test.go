@@ -256,7 +256,7 @@ func TestMetrics(t *testing.T) {
 	r.WireGuard = []report.WGPeer{{PublicKey: "KEY1=", LatestHandshake: 1790000000, RxBytes: 5}, {PublicKey: "KEY2="}}
 	r.Postfix = &report.Postfix{Messages: 3, Queues: map[string]int{"deferred": 2, "active": 1}, OldestAgeSec: 60}
 	var b strings.Builder
-	WriteMetrics(&b, r, map[string]string{"KEY1=": "se2"}, map[string]uint64{"units": 2}, "abc123", time.Unix(1790003600, 0))
+	WriteMetrics(&b, r, map[string]string{"KEY1=": "bravo"}, map[string]uint64{"units": 2}, "abc123", time.Unix(1790003600, 0))
 	out := b.String()
 	fams := validProm(t, out)
 	for _, want := range []string{"node_cpu_seconds_total", "node_memory_MemAvailable_bytes", "node_filesystem_avail_bytes",
@@ -270,7 +270,7 @@ func TestMetrics(t *testing.T) {
 	if fams["node_cpu_seconds_total"] != 8 || fams["sitescope_systemd_unit_memory_max_bytes"] != 1 {
 		t.Errorf("series counts: %v", fams)
 	}
-	for _, want := range []string{`node_cpu_seconds_total{cpu="0",mode="steal"} 0.4`, `peer="se2"`, `peer="unnamed1"`,
+	for _, want := range []string{`node_cpu_seconds_total{cpu="0",mode="steal"} 0.4`, `peer="bravo"`, `peer="unnamed1"`,
 		`node_filesystem_avail_bytes{device="/dev/sda",fstype="ext4",mountpoint="/"}`, `queue="deferred"} 2`,
 		`node_memory_MemAvailable_bytes 4.096e+08`} {
 		if !strings.Contains(out, want) {

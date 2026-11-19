@@ -68,9 +68,9 @@ once the vault is unlocked, and the checks run without it until then.
 ```nix
 ct = {
   # Cloudflare's Universal SSL uses these CAs for proxied names
-  domainIssuers."bllue.org" = [ "SSL.com" "Google Trust Services" ];
+  domainIssuers."example.org" = [ "SSL.com" "Google Trust Services" ];
   # optional; "\\*" is a literal wildcard certificate name, "*" a glob
-  names = [ "da.bllue.org" "ne.bllue.org" "status.bllue.org" "zircon.chooser.us" "bllue.org" "\\*.bllue.org" ];
+  names = [ "www.example.org" "status.example.org" "example.org" "\\*.example.org" ];
 };
 ```
 
