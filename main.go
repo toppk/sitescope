@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -42,25 +44,70 @@ func init() {
 	}
 }
 
-const usage = `usage: sitescope <command> [flags]
+type command struct {
+	name  string
+	group string
+	usage [][2]string // synopsis, what it does
+	run   func(args []string) error
+}
 
-daemons:
-  hub   -config FILE          poll agents, run probes, serve the status page, send mail
-  agent -config FILE          serve this host's report on the wg0 address
+var groups = []string{
+	"daemons",
+	"operator (on the hub host; paths come from the hub config, -config or $SITESCOPE_CONFIG)",
+	"config and checks",
+	"",
+}
 
-operator (on the hub host; paths come from the hub config, -config or $SITESCOPE_CONFIG):
-  unlock | lock | status      talk to the running hub over its control socket
-  vault set NAME              store a secret (value from stdin)
-  vault rm NAME               delete a secret
-  vault list                  list secret names
-  vault set-password          store the admin password hash for the detail view
+// commands is both the dispatch table and the usage text.
+var commands = []command{
+	{"hub", groups[0], [][2]string{{"hub -config FILE", "poll agents, run probes, serve the status page, send mail"}}, runHub},
+	{"agent", groups[0], [][2]string{{"agent -config FILE", "serve this host's report on the wg0 address"}}, runAgent},
+	{"unlock", groups[1], [][2]string{{"unlock", "send the vault passphrase to the running hub"}}, func(a []string) error { return runControl("unlock", a) }},
+	{"lock", groups[1], [][2]string{{"lock", "zero the hub's decrypted secrets"}}, func(a []string) error { return runControl("lock", a) }},
+	{"status", groups[1], [][2]string{{"status", "print the vault state and check count"}}, func(a []string) error { return runControl("status", a) }},
+	{"vault", groups[1], [][2]string{
+		{"vault set NAME", "store a secret (value from stdin)"},
+		{"vault rm NAME", "delete a secret"},
+		{"vault list", "list secret names"},
+		{"vault set-password", "store the admin password hash for the detail view"},
+	}, func(a []string) error {
+		err := runVault(a)
+		if errors.Is(err, fs.ErrPermission) {
+			err = fmt.Errorf("%w (vault commands run as the hub user: sudo -u sitescope sitescope vault ...)", err)
+		}
+		return err
+	}},
+	{"config", groups[2], [][2]string{{"config -config FILE [-check]", "print the effective config with every default filled in; -check only validates it"}}, runConfig},
+	{"check", groups[2], [][2]string{{"check -config FILE [-match SUBSTR] [-format json]", "run checks once and print results; exits 2 if any is crit"}}, runCheck},
+	{"probes", groups[2], [][2]string{{"probes -config FILE [-format json]", "list every destination the hub contacts, and how often"}}, runProbes},
+	{"verify", groups[2], [][2]string{{"verify -url URL [-version V] [-ca FILE] [-vault STATE] [-overall STATUS] [-services N] [-checks N]",
+		"read a running hub's /healthz and /status.json and check them"}}, runVerify},
+	{"version", groups[3], [][2]string{{"version", "print the version"}}, func([]string) error { fmt.Println(version); return nil }},
+}
 
-  check -config FILE [-match SUBSTR]   run checks once and print results
-  probes -config FILE                  list every destination the hub contacts, and how often
-  verify -url URL [-version V] [-ca FILE] [-vault STATE] [-overall STATUS] [-services N] [-checks N]
-                              read a running hub's /healthz and /status.json and check them
-  version
-`
+func usage() string {
+	var b strings.Builder
+	b.WriteString("usage: sitescope <command> [flags]; sitescope <command> -h lists its flags\n")
+	for _, g := range groups {
+		b.WriteString("\n")
+		if g != "" {
+			b.WriteString(g + ":\n")
+		}
+		for _, c := range commands {
+			if c.group != g {
+				continue
+			}
+			for _, u := range c.usage {
+				if len(u[0]) > 36 {
+					fmt.Fprintf(&b, "  %s\n  %-36s %s\n", u[0], "", u[1])
+				} else {
+					fmt.Fprintf(&b, "  %-36s %s\n", u[0], u[1])
+				}
+			}
+		}
+	}
+	return b.String()
+}
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -72,40 +119,20 @@ func main() {
 		},
 	})))
 	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
+		fmt.Fprint(os.Stderr, usage())
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
-	var err error
-	switch cmd {
-	case "hub":
-		err = runHub(args)
-	case "agent":
-		err = runAgent(args)
-	case "check":
-		err = runCheck(args)
-	case "probes":
-		var cfg *config.Config
-		if cfg, err = loadConfig(flag.NewFlagSet("probes", flag.ExitOnError), args); err == nil {
-			err = hub.Probes(cfg, os.Stdout)
-		}
-	case "verify":
-		err = runVerify(args)
-	case "unlock", "lock", "status":
-		err = runControl(cmd, args)
-	case "vault":
-		if err = runVault(args); errors.Is(err, fs.ErrPermission) {
-			err = fmt.Errorf("%w (vault commands run as the hub user: sudo -u sitescope sitescope vault ...)", err)
-		}
-	case "version":
-		fmt.Println(version)
-	case "-h", "--help", "help":
-		fmt.Print(usage)
-	default:
-		fmt.Fprint(os.Stderr, usage)
+	if cmd == "-h" || cmd == "--help" || cmd == "help" {
+		fmt.Print(usage())
+		return
+	}
+	i := slices.IndexFunc(commands, func(c command) bool { return c.name == cmd })
+	if i < 0 {
+		fmt.Fprintf(os.Stderr, "sitescope: unknown command %q\n\n%s", cmd, usage())
 		os.Exit(2)
 	}
-	if err != nil {
+	if err := commands[i].run(args); err != nil {
 		fmt.Fprintln(os.Stderr, "sitescope:", err)
 		os.Exit(1)
 	}
@@ -179,23 +206,99 @@ func runAgent(args []string) error {
 	return agent.Run(ctx, cfg.Agent.Listen, s, tc)
 }
 
+// formatFlag adds -format; text and json render the same value.
+func formatFlag(fs *flag.FlagSet) func() (bool, error) {
+	f := fs.String("format", "text", "output format: text or json")
+	return func() (bool, error) {
+		switch *f {
+		case "text":
+			return false, nil
+		case "json":
+			return true, nil
+		}
+		return false, fmt.Errorf("-format %q, want text or json", *f)
+	}
+}
+
+func writeJSON(v any) error {
+	e := json.NewEncoder(os.Stdout)
+	e.SetIndent("", "  ")
+	return e.Encode(v)
+}
+
 func runCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	match := fs.String("match", "", "only checks whose id contains this")
+	format := formatFlag(fs)
 	cfg, err := loadConfig(fs, args)
+	if err != nil {
+		return err
+	}
+	asJSON, err := format()
 	if err != nil {
 		return err
 	}
 	ctx, cancel := signalContext()
 	defer cancel()
-	worst, err := hub.CheckOnce(ctx, cfg, *match, os.Stdout)
+	rows, err := hub.CheckOnce(ctx, cfg, *match)
 	if err != nil {
 		return err
 	}
-	if worst == status.Crit {
+	if asJSON {
+		err = writeJSON(rows)
+	} else {
+		hub.WriteChecks(os.Stdout, rows)
+	}
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(rows, func(r hub.CheckResult) bool { return r.Status == status.Crit }) {
 		os.Exit(2)
 	}
 	return nil
+}
+
+func runProbes(args []string) error {
+	fs := flag.NewFlagSet("probes", flag.ExitOnError)
+	format := formatFlag(fs)
+	cfg, err := loadConfig(fs, args)
+	if err != nil {
+		return err
+	}
+	asJSON, err := format()
+	if err != nil {
+		return err
+	}
+	rep, err := hub.Probes(cfg)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return writeJSON(rep)
+	}
+	hub.WriteProbes(os.Stdout, rep)
+	return nil
+}
+
+func runConfig(args []string) error {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	only := fs.Bool("check", false, "validate the config and build its checks; print nothing but a count")
+	cfg, err := loadConfig(fs, args)
+	if err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("config: unexpected argument %q", fs.Arg(0))
+	}
+	checks, err := check.Build(cfg)
+	if err != nil {
+		return err
+	}
+	if *only {
+		fmt.Printf("config ok: %d checks\n", len(checks))
+		return nil
+	}
+	return writeJSON(cfg)
 }
 
 func runVerify(args []string) error {

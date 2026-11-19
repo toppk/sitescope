@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -20,10 +21,10 @@ import (
 
 // CheckOnce runs the matching checks one time and prints their results;
 // agent polls run first so the host checks have reports to read.
-func CheckOnce(ctx context.Context, cfg *config.Config, match string, out io.Writer) (status.Status, error) {
+func CheckOnce(ctx context.Context, cfg *config.Config, match string) ([]CheckResult, error) {
 	checks, err := check.Build(cfg)
 	if err != nil {
-		return status.Unknown, err
+		return nil, err
 	}
 	env := &check.Env{HTTP: &http.Client{Timeout: time.Minute}, Hostname: cfg.Hub.Hostname,
 		AgentToken: os.Getenv("SITESCOPE_AGENT_TOKEN"), Reports: &check.Reports{},
@@ -68,41 +69,68 @@ func CheckOnce(ctx context.Context, cfg *config.Config, match string, out io.Wri
 	}
 	runAll(first)
 	runAll(second)
-	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	worst := status.OK
+	var rows []CheckResult
 	for _, c := range checks {
-		r, ok := results[c.ID]
-		if !ok {
-			continue
+		if r, ok := results[c.ID]; ok {
+			rows = append(rows, CheckResult{r.Status, c.ID, c.Name, r.Took.Milliseconds(), r.Message})
 		}
-		worst = status.Worst(worst, r.Status)
-		fmt.Fprintf(tw, "%s\t%s\t%dms\t%s\n", r.Status, c.ID, r.Took.Milliseconds(), r.Message)
+	}
+	if len(rows) == 0 && match != "" {
+		return nil, fmt.Errorf("check: no check id contains %q; 'sitescope check -config FILE' runs them all", match)
+	}
+	return rows, nil
+}
+
+type CheckResult struct {
+	Status  status.Status `json:"status"`
+	ID      string        `json:"id"`
+	Name    string        `json:"name"`
+	TookMS  int64         `json:"tookMs"`
+	Message string        `json:"message"`
+}
+
+func WriteChecks(out io.Writer, rows []CheckResult) {
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, r := range rows {
+		fmt.Fprintf(tw, "%s\t%s\t%dms\t%s\n", r.Status, r.ID, r.TookMS, r.Message)
 	}
 	tw.Flush()
-	return worst, nil
 }
 
 // Probes prints every network contact the hub makes, by destination, with steady-state rates.
-func Probes(cfg *config.Config, out io.Writer) error {
+// ProbeReport is every destination the hub contacts when all is healthy.
+type ProbeReport struct {
+	Destinations []Destination `json:"destinations"`
+	PerHour      float64       `json:"perHour"`
+	// MaxRetries is how many more times a failing check reruns before alerting.
+	MaxRetries int `json:"maxRetries"`
+}
+
+type Destination struct {
+	Name    string       `json:"name"`
+	Port    string       `json:"port"`
+	PerHour float64      `json:"perHour"`
+	Probes  []ProbeGroup `json:"probes"`
+}
+
+// ProbeGroup is one kind of contact from checks sharing an interval.
+type ProbeGroup struct {
+	What        string  `json:"what"`
+	IntervalSec float64 `json:"intervalSec"`
+	Checks      int     `json:"checks"`
+	PerRun      int     `json:"perRun"`
+	PerHour     float64 `json:"perHour"`
+}
+
+func Probes(cfg *config.Config) (*ProbeReport, error) {
 	checks, err := check.Build(cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	type line struct {
-		what     string
-		interval time.Duration
-		checks   int
-		perRun   int
-	}
-	type dest struct {
-		name, port string
-		perHour    float64
-		lines      []*line
-	}
-	dests := map[string]*dest{}
-	maxRetries := 0
+	dests := map[string]*Destination{}
+	rep := &ProbeReport{}
 	for _, c := range checks {
-		maxRetries = max(maxRetries, c.Retries)
+		rep.MaxRetries = max(rep.MaxRetries, c.Retries)
 		for _, p := range c.Probes {
 			if h, _, err := net.SplitHostPort(p.Dest); err == nil {
 				p.Dest = h
@@ -110,44 +138,42 @@ func Probes(cfg *config.Config, out io.Writer) error {
 			k := p.Dest + " " + p.Port
 			d := dests[k]
 			if d == nil {
-				d = &dest{name: p.Dest, port: p.Port}
+				d = &Destination{Name: p.Dest, Port: p.Port}
 				dests[k] = d
 			}
-			d.perHour += float64(p.Count) * float64(time.Hour) / float64(c.Interval)
-			i := slices.IndexFunc(d.lines, func(l *line) bool { return l.what == p.What && l.interval == c.Interval })
+			perHour := float64(p.Count) * float64(time.Hour) / float64(c.Interval)
+			d.PerHour += perHour
+			rep.PerHour += perHour
+			i := slices.IndexFunc(d.Probes, func(g ProbeGroup) bool { return g.What == p.What && g.IntervalSec == c.Interval.Seconds() })
 			if i < 0 {
-				d.lines = append(d.lines, &line{what: p.What, interval: c.Interval})
-				i = len(d.lines) - 1
+				d.Probes = append(d.Probes, ProbeGroup{What: p.What, IntervalSec: c.Interval.Seconds()})
+				i = len(d.Probes) - 1
 			}
-			d.lines[i].checks++
-			d.lines[i].perRun += p.Count
+			d.Probes[i].Checks++
+			d.Probes[i].PerRun += p.Count
+			d.Probes[i].PerHour += perHour
 		}
 	}
-	keys := slices.Sorted(func(yield func(string) bool) {
-		for k := range dests {
-			if !yield(k) {
-				return
-			}
-		}
-	})
-	var total float64
-	for _, k := range keys {
-		d := dests[k]
-		total += d.perHour
-		fmt.Fprintf(out, "%s %s  %s\n", d.name, d.port, rate(d.perHour))
-		for _, l := range d.lines {
+	for _, k := range slices.Sorted(maps.Keys(dests)) {
+		rep.Destinations = append(rep.Destinations, *dests[k])
+	}
+	return rep, nil
+}
+
+func WriteProbes(out io.Writer, rep *ProbeReport) {
+	for _, d := range rep.Destinations {
+		fmt.Fprintf(out, "%s %s  %s\n", d.Name, d.Port, rate(d.PerHour))
+		for _, g := range d.Probes {
 			n := "1 check"
-			if l.checks > 1 {
-				n = fmt.Sprintf("%d checks", l.checks)
+			if g.Checks > 1 {
+				n = fmt.Sprintf("%d checks", g.Checks)
 			}
-			fmt.Fprintf(out, "    %-9s %s (%s every %s)\n",
-				rate(float64(l.perRun)*float64(time.Hour)/float64(l.interval)), l.what, n, every(l.interval))
+			fmt.Fprintf(out, "    %-9s %s (%s every %s)\n", rate(g.PerHour), g.What, n, every(time.Duration(g.IntervalSec*float64(time.Second))))
 		}
 	}
 	fmt.Fprintf(out, "\n%d destinations, %s in all when healthy. A failing check reruns up to %d more times\n"+
 		"(retryInterval apart) before alerting, then keeps its normal interval; agent-derived checks make no contacts.\n",
-		len(keys), rate(total), maxRetries)
-	return nil
+		len(rep.Destinations), rate(rep.PerHour), rep.MaxRetries)
 }
 
 // rate formats contacts per hour, as per day when under one an hour.

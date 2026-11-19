@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -32,5 +33,19 @@ func TestHubConfigPaths(t *testing.T) {
 	cfg, err := hubConfig(parse(), p)
 	if err != nil || cfg.Hub.ControlSocket != "/run/user/1000/sitescope.sock" || cfg.Hub.Vault != "/home/op/server/sitescope/vault.age" {
 		t.Errorf("config paths = %+v, %v", cfg.Hub, err)
+	}
+}
+
+func TestUsageCoversCommands(t *testing.T) {
+	u := usage()
+	for _, c := range commands {
+		for _, line := range c.usage {
+			if !strings.HasPrefix(line[0], c.name) || !strings.Contains(u, line[0]) {
+				t.Errorf("usage for %s: %q", c.name, line[0])
+			}
+		}
+	}
+	if !slices.ContainsFunc(commands, func(c command) bool { return c.name == "config" }) {
+		t.Error("config is a command")
 	}
 }

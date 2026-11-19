@@ -303,12 +303,21 @@ func TestStuckUnknownAlertsButNotUnderDownAgent(t *testing.T) {
 	}
 }
 
+func TestCheckOnceNoMatch(t *testing.T) {
+	h := testHub(t)
+	if _, err := CheckOnce(context.Background(), h.cfg, "no-such-check"); err == nil || !strings.Contains(err.Error(), `no check id contains "no-such-check"`) {
+		t.Errorf("no match: %v", err)
+	}
+}
+
 func TestProbesListsDestinations(t *testing.T) {
 	h := testHub(t)
-	var b strings.Builder
-	if err := Probes(h.cfg, &b); err != nil {
+	rep, err := Probes(h.cfg)
+	if err != nil {
 		t.Fatal(err)
 	}
+	var b strings.Builder
+	WriteProbes(&b, rep)
 	out := b.String()
 	for _, want := range []string{"192.0.2.1 25/tcp", "connect, read banner, QUIT", "RCPT TO", "/day", "/h", "destinations"} {
 		if !strings.Contains(out, want) {
