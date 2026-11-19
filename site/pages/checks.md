@@ -245,7 +245,7 @@ these instead:
 `hub.vault`, every tick: `locked` while the vault has been locked under
 `hub.lockedAfter` (15 minutes), then warn until someone runs
 `sitescope unlock`, so a restart nobody followed up on sends an email.
-Negative `lockedAfter` removes the check.
+`lockedAfter: "off"` removes the check.
 
 ## Cloud
 

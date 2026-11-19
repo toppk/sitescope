@@ -27,7 +27,21 @@ No behaviour change; groundwork for what follows.
 - Facts for non-NixOS hosts: kernel installed vs running, and package
   update age.
 
-## 1.5.0: logs and metrics
+## 1.5.0: a strict config
+
+- Unknown, misspelled and renamed keys fail at load, naming each one; the
+  NixOS module runs the same check when the system builds.
+- `sitescope config` prints the effective config.
+- `"off"` instead of negative or out-of-range values; a top-level `host`
+  list.
+- JSON output for `check` and `probes`.
+
+## 1.6.0: TOML
+
+- The config may be TOML, with the same keys, defaults and checks.
+- Docs written in that form, with NixOS settings as one way to produce it.
+
+## 1.7.0: logs and metrics
 
 - Kernel and journal watching: counted rules, with ignore, info-level and
   allowlist rules, so a burst of lines is one alert.

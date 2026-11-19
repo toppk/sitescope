@@ -29,7 +29,34 @@ Outside NixOS you write `agent` yourself. Its keys are:
 ## Durations and thresholds
 
 A duration is a string like `"90s"`, `"5m"`, `"12h"`, or a number of
-seconds. A threshold is `{ warn = …; crit = …; }`; `0` turns a bound off.
+seconds. `hub.lockedAfter` and `alerts.unknownAfter` also take `"off"`.
+
+A threshold is `{ warn = …; crit = …; }`. A bound you leave out keeps its
+default, and `"off"` turns it off: `diskBusy = { warn = 95; crit = "off"; }`
+warns at 95% and never goes crit.
+
+## Checking a config
+
+Keys are exact, case included. An unknown key fails at load with its path
+and the closest known key, and every problem is listed at once:
+
+```text
+sitescope: config: 2 problems:
+  hosts.swapin: unknown key (did you mean swapIn?)
+  host[0].unitz: unknown key (did you mean units?)
+```
+
+A key renamed in a release fails the same way and names its new form, as
+in `hosts.hosts: renamed in 1.5.0: use host`. A section set to `null`
+fails too. To turn a section off, leave it out.
+
+- `sitescope config -config FILE -check` loads the config and builds its
+  checks, and prints only the check count. It needs no secrets and opens
+  no files the config names.
+- `sitescope config -config FILE` prints the effective config, with every
+  default filled in.
+- The NixOS module runs `-check` on the rendered settings when the system
+  builds, so a typo fails `nixos-rebuild` before anything deploys.
 
 ## Timing
 
@@ -47,10 +74,11 @@ target) can override it with the same four keys:
 
 | key | default | notes |
 |---|---|---|
-| `hub` | `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL`, `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"` (the scheduler's grid), `concurrency: 8` | `lockedAfter` is how long the vault may stay locked before `hub.vault` warns (negative disables); `refresh` is the page's reload interval in seconds; `concurrency` caps checks running at once |
+| `hub` | `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL`, `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"` (the scheduler's grid), `concurrency: 8` | `lockedAfter` is how long the vault may stay locked before `hub.vault` warns (`"off"` removes the check); `refresh` is the page's reload interval in seconds; `concurrency` caps checks running at once |
 | `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"`, `digestTime`, `ntfy: {enabled: false, min: "crit", details: false}` | `digestTime` is `"HH:MM"`, local time; unset means no digest. `ntfy` pushes to a phone, see [Notifications](concepts.html#notifications) |
 | `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`; `visibility` is `public`, `grouped` (default) or `private`; first match wins; unmatched checks are public under their area's name. See [visibility](web.html#visibility). Areas are `dns mail http tls domains hosts devices hygiene cloud hub` |
-| `hosts` | `hosts: [{name, url, local, postfix, knot, os, wireguard, ca, tokenEnv, wgIgnore, units, skip, disks}]` (`skip` names this host's checks not to create, e.g. `["swap"]`; `disks: {mount: {free, used, inodes, ignore}}` overrides the disk thresholds per mount; `local: true` is the hub's own host, collected in-process instead of from `url`, see [Without NixOS](standalone.html); `os` defaults to `"nixos"`; any other os-release ID drops the NixOS checks; `wireguard: false` drops the handshake check; `ca` is a PEM file that verifies an `https` agent URL; `tokenEnv` names the variable with this agent's own token; `units: [{name, user, severity, maxAge}]` lists systemd units that must be active, see [Hosts](checks.html#hosts)), `wgPeers: {pubkey: name}` | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `updatesAge {30,90}` days (hosts not on NixOS), `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
+| `host` | `[{name, url, local, postfix, knot, os, wireguard, ca, tokenEnv, wgIgnore, units, skip, disks}]` | one entry per host. `skip` names this host's checks not to create, e.g. `["swap"]`; `disks: {mount: {free, used, inodes, ignore}}` overrides the disk thresholds per mount; `local: true` is the hub's own host, collected in-process instead of from `url`, see [Without NixOS](standalone.html); `os` defaults to `"nixos"`; any other os-release ID drops the NixOS checks; `wireguard: false` drops the handshake check; `ca` is a PEM file that verifies an `https` agent URL; `tokenEnv` names the variable with this agent's own token; `units: [{name, user, severity, maxAge}]` lists systemd units that must be active, see [Hosts](checks.html#hosts) |
+| `hosts` | `wgPeers: {pubkey: name}`, and the thresholds for every host | thresholds: `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {1209600,259200}` s, `nixpkgsAge {30,90}` days, `updatesAge {30,90}` days (hosts not on NixOS), `knotZones` (default `dns.zones`); rates over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % of MemoryMax |
 | `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | `delegation` is the expected NS names |
 | `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | |
 | `tls` | `targets: [{name, host, port, starttls, families, alpn}]`, `days {20,7}` | `port` 443, or 25 with `starttls: "smtp"`; `families` `["4","6"]`; `alpn: "h2"` warns unless h2 is chosen |
@@ -98,15 +126,13 @@ in
     { name = "Mail"; areas = [ "mail" ]; }
     { name = "Web"; areas = [ "http" "tls" ]; }
   ];
-  hosts = {
-    hosts = lib.mapAttrsToList (name: h: {
-      inherit name;
-      url = "http://${h.wg}:9105";
-      postfix = h.role == "secondary";
-      knot = true;
-    }) inventory;
-    wgPeers = lib.mapAttrs' (n: h: lib.nameValuePair h.wgPublicKey n) inventory;
-  };
+  host = lib.mapAttrsToList (name: h: {
+    inherit name;
+    url = "http://${h.wg}:9105";
+    postfix = h.role == "secondary";
+    knot = true;
+  }) inventory;
+  hosts.wgPeers = lib.mapAttrs' (n: h: lib.nameValuePair h.wgPublicKey n) inventory;
   dns = {
     inherit zones;
     primary = "10.0.0.1";

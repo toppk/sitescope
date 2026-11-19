@@ -81,7 +81,7 @@ start:
 {
   alerts = { enabled = true; from = "sitescope@example.org"; to = [ "ops@example.org" ]; digestTime = "08:00"; };
   hub.publicURL = "https://status.example.org";
-  hosts.hosts = [
+  host = [
     { name = "a"; url = "http://10.0.0.1:9105"; knot = true; }
     { name = "b"; url = "http://10.0.0.2:9105"; postfix = true; }
   ];

@@ -62,12 +62,23 @@ error. Run them as the hub user:
 :   Asks twice for the detail view's admin password and stores its bcrypt
     hash as `admin_password_hash`.
 
+## The config
+
+`sitescope config -config FILE [-check]`
+:   Prints the effective config as JSON, with every default filled in.
+    With `-check` it only validates the config and builds its checks, and
+    prints the count. An unknown key fails with its path, as in
+    `hosts.swapin: unknown key (did you mean swapIn?)`. See
+    [Checking a config](configuration.html#checking-a-config).
+
 ## One-shot checks
 
-`sitescope check -config FILE [-match SUBSTR]`
+`sitescope check -config FILE [-match SUBSTR] [-format json]`
 :   Runs every check that doesn't need the vault once, in parallel, and
     prints one line per check: status, id, time taken, message. Exits 2 if
-    any is crit. Useful for trying a configuration before deploying it.
+    any is crit, and fails if `-match` matches no check id. Useful for
+    trying a configuration before deploying it. `-format json` prints the
+    same results as a list of `{status, id, name, tookMs, message}`.
 
 ```text
 $ sitescope check -config config.json -match tls
@@ -78,9 +89,10 @@ warn  tls.mx.example.org.smtp.25.v4      212ms  certificate expires 2026-10-15 (
 
 ## What the hub contacts
 
-`sitescope probes -config FILE`
+`sitescope probes -config FILE [-format json]`
 :   Lists every destination the hub contacts (address or host, port and
     protocol), what it sends there and how often, when all is healthy.
+    `-format json` prints the same report as data.
     See [Probes and alert volume](probes.html).
 
 ## Checking a running hub

@@ -26,6 +26,11 @@ All under `services.sitescope`.
 The module asserts that an agent has an address, and that `agent.enable`
 is only used with `role = "hub"`.
 
+The system build also runs `sitescope config -check` on the rendered
+`settings`. An unknown, misspelled or renamed key then fails
+`nixos-rebuild` with the key's path, before anything is deployed. The
+check reads only the rendered file and needs no secrets.
+
 ## The hub unit
 
 `sitescope.service`, user `sitescope`:
