@@ -180,8 +180,9 @@ runs every non-credential check once and exits 2 if any is crit.
 
 ## Install
 
-Each [release](https://github.com/toppk/sitescope/releases) has static
-binaries for Linux on x86-64 and arm64, with `SHA256SUMS`:
+Starting with 1.6.0, [releases](https://github.com/toppk/sitescope/releases)
+include static Linux binaries for x86-64 and arm64, with `SHA256SUMS`.
+Earlier releases are tags only:
 
 ```sh
 v=1.6.0

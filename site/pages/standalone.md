@@ -12,9 +12,9 @@ agent process, plus devices on the network.
 
 ## The binary
 
-Download a release's tarball for your architecture (`linux-amd64` or
-`linux-arm64`) from the
-[releases](https://github.com/toppk/sitescope/releases), and check it
+Starting with 1.6.0, [releases](https://github.com/toppk/sitescope/releases)
+include static Linux binaries; earlier releases are tags only. Download the
+tarball for your architecture (`linux-amd64` or `linux-arm64`) and check it
 against the release's `SHA256SUMS`:
 
 ```sh
