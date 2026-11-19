@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -208,16 +210,25 @@ func resolve(ctx context.Context, host, family string) (net.IP, error) {
 	return v6, nil
 }
 
-// Echo sends count ICMP echo requests from an unprivileged ping socket and returns the replies' round trips.
+// Echo sends count ICMP echo requests and returns the replies' round trips. It uses an unprivileged
+// ping socket, or, where the system has none (FreeBSD, OpenBSD), a raw socket, which needs root.
 func Echo(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
-	network, laddr, proto := "udp4", "0.0.0.0", 1
+	network, rawNetwork, laddr, proto := "udp4", "ip4:icmp", "0.0.0.0", 1
 	var typ icmp.Type = ipv4.ICMPTypeEcho
 	if ip.To4() == nil {
-		network, laddr, proto, typ = "udp6", "::", 58, ipv6.ICMPTypeEchoRequest
+		network, rawNetwork, laddr, proto, typ = "udp6", "ip6:ipv6-icmp", "::", 58, ipv6.ICMPTypeEchoRequest
 	}
 	conn, err := icmp.ListenPacket(network, laddr)
+	raw := false
+	if errors.Is(err, syscall.EPROTONOSUPPORT) {
+		conn, err = icmp.ListenPacket(rawNetwork, laddr)
+		raw = true
+	}
 	if err != nil {
-		if errors.Is(err, os.ErrPermission) {
+		switch {
+		case raw && errors.Is(err, os.ErrPermission):
+			err = fmt.Errorf("%w (%s has no unprivileged ICMP, so ping needs the hub to run as root)", err, runtime.GOOS)
+		case errors.Is(err, os.ErrPermission):
 			err = fmt.Errorf("%w (unprivileged ICMP needs net.ipv4.ping_group_range to include the hub's group)", err)
 		}
 		return nil, err
@@ -232,9 +243,13 @@ func Echo(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
 	sent := make(map[int]time.Time, count)
 	var rtts []time.Duration
 	buf := make([]byte, 1500)
-	dst := &net.UDPAddr{IP: ip}
+	var dst net.Addr = &net.UDPAddr{IP: ip}
+	if raw {
+		dst = &net.IPAddr{IP: ip}
+	}
+	id := os.Getpid() & 0xffff
 	for seq := 1; seq <= count; seq++ {
-		msg := icmp.Message{Type: typ, Body: &icmp.Echo{ID: os.Getpid() & 0xffff, Seq: seq, Data: []byte("sitescope")}}
+		msg := icmp.Message{Type: typ, Body: &icmp.Echo{ID: id, Seq: seq, Data: []byte("sitescope")}}
 		b, _ := msg.Marshal(nil)
 		sent[seq] = time.Now()
 		if _, err := conn.WriteTo(b, dst); err != nil {
@@ -254,11 +269,17 @@ func Echo(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
 			if err != nil {
 				break
 			}
-			m, err := icmp.ParseMessage(proto, buf[:n])
+			b := buf[:n]
+			// a raw IPv4 socket may hand over the IP header too
+			if raw && proto == 1 && n > 0 && b[0]>>4 == 4 && int(b[0]&0x0f)*4 <= n {
+				b = b[int(b[0]&0x0f)*4:]
+			}
+			m, err := icmp.ParseMessage(proto, b)
 			if err != nil {
 				continue
 			}
-			if e, ok := m.Body.(*icmp.Echo); ok && (m.Type == ipv4.ICMPTypeEchoReply || m.Type == ipv6.ICMPTypeEchoReply) {
+			// a ping socket's kernel rewrites the ID; a raw socket sees every reply on the host, so match ours
+			if e, ok := m.Body.(*icmp.Echo); ok && (m.Type == ipv4.ICMPTypeEchoReply || m.Type == ipv6.ICMPTypeEchoReply) && (!raw || e.ID == id) {
 				if at, ok := sent[e.Seq]; ok {
 					rtts = append(rtts, time.Since(at))
 					delete(sent, e.Seq)

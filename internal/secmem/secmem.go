@@ -13,7 +13,7 @@ func New(n int) (*Buf, error) {
 	if n <= 0 {
 		n = 1
 	}
-	b, err := unix.Mmap(-1, 0, n, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	b, err := unix.Mmap(-1, 0, n, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE|mapNoDump)
 	if err != nil {
 		return nil, fmt.Errorf("secmem: mmap: %w", err)
 	}
@@ -21,7 +21,7 @@ func New(n int) (*Buf, error) {
 		unix.Munmap(b)
 		return nil, fmt.Errorf("secmem: mlock %d bytes (raise LimitMEMLOCK): %w", n, err)
 	}
-	unix.Madvise(b, unix.MADV_DONTDUMP)
+	noDump(b)
 	return &Buf{b: b}, nil
 }
 
@@ -45,9 +45,9 @@ func (s *Buf) Destroy() {
 // Wipe zeroes a heap slice; for buffers we could not keep in locked memory.
 func Wipe(b []byte) { clear(b) }
 
-// HardenProcess disables core dumps and ptrace attach by non-root users.
+// HardenProcess disables core dumps and, where the system allows it, ptrace attach by non-root users.
 func HardenProcess() error {
-	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
+	if err := noTrace(); err != nil {
 		return err
 	}
 	return unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{})

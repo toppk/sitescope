@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -204,6 +205,13 @@ func runHub(args []string) error {
 	if err != nil {
 		return err
 	}
+	if hs := config.Get[*check.Hosts](cfg); hs != nil && !agent.Supported {
+		for _, h := range hs.Hosts {
+			if h.Local {
+				return fmt.Errorf("hosts: %s is local, which needs the Linux collectors; on %s, run the agent on a Linux host and give its url", h.Name, runtime.GOOS)
+			}
+		}
+	}
 	if err := secmem.HardenProcess(); err != nil {
 		return fmt.Errorf("harden: %w", err)
 	}
@@ -218,6 +226,9 @@ func runHub(args []string) error {
 }
 
 func runAgent(args []string) error {
+	if !agent.Supported {
+		return fmt.Errorf("agent: the collectors read Linux's /proc, /sys and systemd, so the agent runs on Linux only, not %s", runtime.GOOS)
+	}
 	cfg, err := loadConfig(flag.NewFlagSet("agent", flag.ExitOnError), args)
 	if err != nil {
 		return err

@@ -17,8 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/toppk/sitescope/internal/config"
 	"github.com/toppk/sitescope/internal/report"
 )
@@ -235,20 +233,20 @@ func (c *Collector) disks(r *report.Report) error {
 			}
 			continue
 		}
-		var st unix.Statfs_t
-		if err := unix.Statfs(c.path(mount), &st); err != nil {
+		st, err := statfs(c.path(mount))
+		if err != nil {
 			continue
 		}
-		d := report.Disk{Mount: mount, FSType: qf[0], TotalBytes: st.Blocks * uint64(st.Bsize),
-			AvailBytes: st.Bavail * uint64(st.Bsize), Files: st.Files, FilesFree: st.Ffree}
+		d := report.Disk{Mount: mount, FSType: qf[0], TotalBytes: st.blocks * st.bsize,
+			AvailBytes: st.bavail * st.bsize, Files: st.files, FilesFree: st.ffree}
 		if len(qf) > 1 {
 			d.Device = qf[1]
 		}
-		if used := st.Blocks - st.Bfree; used+st.Bavail > 0 {
-			d.UsedPct = round1(100 * float64(used) / float64(used+st.Bavail))
+		if used := st.blocks - st.bfree; used+st.bavail > 0 {
+			d.UsedPct = round1(100 * float64(used) / float64(used+st.bavail))
 		}
-		if st.Files > 0 {
-			d.InodesPct = round1(100 * float64(st.Files-st.Ffree) / float64(st.Files))
+		if st.files > 0 {
+			d.InodesPct = round1(100 * float64(st.files-st.ffree) / float64(st.files))
 		}
 		seen[dev], wholes[dev] = len(r.Disks), whole
 		r.Disks = append(r.Disks, d)

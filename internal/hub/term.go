@@ -24,7 +24,7 @@ func ReadSecret(prompt string) (*secmem.Buf, int, error) {
 // ReadStdinSecret reads a value from stdin: prompted with echo off on a
 // terminal, otherwise everything up to EOF minus one trailing newline.
 func ReadStdinSecret(prompt string, max int) (*secmem.Buf, int, error) {
-	if _, err := unix.IoctlGetTermios(int(os.Stdin.Fd()), unix.TCGETS); err == nil {
+	if _, err := unix.IoctlGetTermios(int(os.Stdin.Fd()), ioctlGetTermios); err == nil {
 		return readLine(os.Stdin, prompt, false)
 	}
 	buf, err := secmem.New(max + 1)
@@ -51,17 +51,17 @@ func ReadStdinSecret(prompt string, max int) (*secmem.Buf, int, error) {
 
 func readLine(f *os.File, prompt string, promptToFile bool) (*secmem.Buf, int, error) {
 	fd := int(f.Fd())
-	old, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	old, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
 	if err != nil {
 		return nil, 0, err
 	}
 	noecho := *old
 	noecho.Lflag &^= unix.ECHO
 	noecho.Lflag |= unix.ICANON | unix.ECHONL
-	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &noecho); err != nil {
+	if err := unix.IoctlSetTermios(fd, ioctlSetTermios, &noecho); err != nil {
 		return nil, 0, err
 	}
-	defer unix.IoctlSetTermios(fd, unix.TCSETS, old)
+	defer unix.IoctlSetTermios(fd, ioctlSetTermios, old)
 	if promptToFile {
 		fmt.Fprint(f, prompt)
 	} else {

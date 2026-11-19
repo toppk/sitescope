@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/toppk/sitescope/internal/secmem"
 	"github.com/toppk/sitescope/internal/vault"
 )
@@ -64,8 +62,8 @@ func peerUID(c *net.UnixConn) string {
 	}
 	uid := "?"
 	raw.Control(func(fd uintptr) {
-		if cred, err := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED); err == nil {
-			uid = strconv.Itoa(int(cred.Uid))
+		if u, err := sockPeerUID(int(fd)); err == nil {
+			uid = strconv.Itoa(u)
 		}
 	})
 	return uid

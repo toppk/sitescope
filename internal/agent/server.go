@@ -16,8 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/toppk/sitescope/internal/report"
 )
 
@@ -106,9 +104,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func Listen(ctx context.Context, addr string) (net.Listener, error) {
 	lc := net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error {
 		var serr error
-		err := c.Control(func(fd uintptr) {
-			serr = unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_FREEBIND, 1)
-		})
+		err := c.Control(func(fd uintptr) { serr = freebind(int(fd)) })
 		return errors.Join(err, serr)
 	}}
 	return lc.Listen(ctx, "tcp", addr)

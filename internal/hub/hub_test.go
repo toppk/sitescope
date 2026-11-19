@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -421,5 +422,28 @@ func TestNoVaultBannerWithoutSecretChecks(t *testing.T) {
 	full.startup()
 	if len(n.sent) != 1 || n.sent[0].Kind != KindStartup {
 		t.Errorf("the unlock email when checks need the vault: %+v", n.sent)
+	}
+}
+
+func TestPeerUID(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "s")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		if c, err := net.Dial("unix", sock); err == nil {
+			defer c.Close()
+			time.Sleep(time.Second)
+		}
+	}()
+	c, err := ln.AcceptUnix()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if got, want := peerUID(c), strconv.Itoa(os.Getuid()); got != want {
+		t.Errorf("peerUID = %s, want %s", got, want)
 	}
 }

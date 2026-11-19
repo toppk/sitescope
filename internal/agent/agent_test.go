@@ -104,6 +104,9 @@ func fakeRoot(t *testing.T) string {
 }
 
 func TestCollect(t *testing.T) {
+	if !Supported {
+		t.Skip("disk collection is Linux only")
+	}
 	root := fakeRoot(t)
 	c := &Collector{Root: root, Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false", WGInterface: "wg0"}}
 	r := c.Collect(context.Background())
@@ -251,6 +254,9 @@ func validProm(t *testing.T, text string) map[string]int {
 }
 
 func TestMetrics(t *testing.T) {
+	if !Supported {
+		t.Skip("disk collection is Linux only")
+	}
 	c := &Collector{Root: fakeRoot(t), Cfg: config.Agent{Systemctl: "/bin/false", WG: "/bin/false"}}
 	r := c.Collect(context.Background())
 	r.WireGuard = []report.WGPeer{{PublicKey: "KEY1=", LatestHandshake: 1790000000, RxBytes: 5}, {PublicKey: "KEY2="}}
@@ -439,6 +445,9 @@ func TestCollectorTimeout(t *testing.T) {
 }
 
 func TestDiskBindOfSubdir(t *testing.T) {
+	if !Supported {
+		t.Skip("disk collection is Linux only")
+	}
 	root := fakeRoot(t)
 	for _, d := range []string{"/data/vol2", "/home/u", "/h2"} {
 		os.MkdirAll(filepath.Join(root, d), 0o755)
