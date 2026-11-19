@@ -21,7 +21,7 @@ import (
 
 type Hosts struct {
 	config.Timing
-	Hosts       []Host            `json:"hosts"`
+	Hosts       []Host            `json:"-"` // the top-level host list
 	WGPeers     map[string]string `json:"wgPeers"`
 	Disk        Threshold         `json:"disk"`
 	Memory      Threshold         `json:"memory"`
@@ -83,6 +83,8 @@ type DiskRule struct {
 // skippable are the per-host checks a host's skip may name.
 var skippable = []string{"disk", "memory", "swap", "load", "units", "cgroups", "cpu", "pressure", "diskio", "network",
 	"wireguard", "reboot", "nixpkgs", "updates", "postfix", "knot"}
+
+func (hs *Hosts) List(string) any { return &hs.Hosts }
 
 func (hs *Hosts) Defaults(*config.Config) {
 	hs.Disk = hs.Disk.Or(Threshold{Warn: 80, Crit: 90})

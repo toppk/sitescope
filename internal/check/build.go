@@ -24,7 +24,7 @@ type module interface {
 
 // Modules are registered in build order, which is the order checks appear in.
 func init() {
-	config.Register("hosts", func() config.Section { return new(Hosts) })
+	config.Register("hosts", func() config.Section { return new(Hosts) }, "host")
 	config.Register("dns", func() config.Section { return new(DNS) })
 	config.Register("domains", func() config.Section { return new(Domains) })
 	config.Register("tls", func() config.Section { return new(TLS) })

@@ -94,7 +94,7 @@ func TestBuildFromConfig(t *testing.T) {
 }
 
 func TestHostOS(t *testing.T) {
-	c, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "charlie", "url": "http://127.0.0.1:9105", "os": "fedora", "wireguard": false}]}, "dns": null}`))
+	c, err := config.Parse([]byte(`{"host": [{"name": "charlie", "url": "http://127.0.0.1:9105", "os": "fedora", "wireguard": false}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,9 +113,9 @@ func TestHostOS(t *testing.T) {
 		t.Errorf("a Fedora host has the kernel and package checks: %v", ids)
 	}
 	if config.Get[*Hosts](c) == nil || config.Get[*DNS](c) != nil {
-		t.Error("a null section is absent")
+		t.Error("an absent section is off")
 	}
-	if _, err := config.Parse([]byte(`{"tls": {"targets": 3}}`)); err == nil || !strings.HasPrefix(err.Error(), "config: tls: ") {
+	if _, err := config.Parse([]byte(`{"tls": {"targets": 3}}`)); err == nil || !strings.HasPrefix(err.Error(), "config: tls.targets: ") {
 		t.Errorf("section errors name the section: %v", err)
 	}
 	if _, err := config.Parse([]byte(`{"ct": {"names": ["["]}}`)); err == nil {
@@ -783,7 +783,7 @@ func TestUnitsConfig(t *testing.T) {
 		t.Errorf("query = %q", got)
 	}
 	for _, bad := range []string{`{"name": "sshd"}`, `{"name": "sshd.service", "severity": "page"}`} {
-		_, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "alpha", "url": "http://a", "units": [` + bad + `]}]}}`))
+		_, err := config.Parse([]byte(`{"host": [{"name": "alpha", "url": "http://a", "units": [` + bad + `]}]}`))
 		if err == nil {
 			t.Errorf("%s should not validate", bad)
 		}
@@ -992,8 +992,8 @@ func TestOlderAgentOnNewChecks(t *testing.T) {
 }
 
 func TestLocalHost(t *testing.T) {
-	cfg, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "home", "local": true, "os": "fedora", "wireguard": false,
-		"units": [{"name": "nope-sitescope-test.service", "severity": "warn"}]}]}, "dns": null}`))
+	cfg, err := config.Parse([]byte(`{"host": [{"name": "home", "local": true, "os": "fedora", "wireguard": false,
+		"units": [{"name": "nope-sitescope-test.service", "severity": "warn"}]}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1019,7 +1019,7 @@ func TestLocalHost(t *testing.T) {
 		t.Errorf("local report = %+v", r)
 	}
 	for _, bad := range []string{`{"name": "x", "local": true, "url": "http://a"}`, `{"name": "x"}`} {
-		if _, err := config.Parse([]byte(`{"hosts": {"hosts": [` + bad + `]}}`)); err == nil {
+		if _, err := config.Parse([]byte(`{"host": [` + bad + `]}`)); err == nil {
 			t.Errorf("%s should not validate", bad)
 		}
 	}
@@ -1053,8 +1053,8 @@ func TestDiskRulesAndSkip(t *testing.T) {
 		t.Errorf("no rules keeps percent = %+v", got)
 	}
 
-	cfg, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "a", "local": true, "skip": ["swap", "load"],
-		"disks": {"/archive": {"free": {"warn": 1000, "crit": 200}}}}]}, "dns": null}`))
+	cfg, err := config.Parse([]byte(`{"host": [{"name": "a", "local": true, "skip": ["swap", "load"],
+		"disks": {"/archive": {"free": {"warn": 1000, "crit": 200}}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1065,7 +1065,7 @@ func TestDiskRulesAndSkip(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{`"skip": ["agent"]`, `"disks": {"archive": {}}`} {
-		if _, err := config.Parse([]byte(`{"hosts": {"hosts": [{"name": "a", "local": true, ` + bad + `}]}}`)); err == nil {
+		if _, err := config.Parse([]byte(`{"host": [{"name": "a", "local": true, ` + bad + `}]}`)); err == nil {
 			t.Errorf("%s should not validate", bad)
 		}
 	}

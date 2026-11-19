@@ -2,16 +2,21 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path"
+	"reflect"
 	"slices"
 	"strconv"
 	"time"
 )
 
 type Duration time.Duration
+
+// Off disables a duration that allows it (tagged config:"off").
+const Off Duration = -1
 
 func (d Duration) D() time.Duration { return time.Duration(d) }
 
@@ -25,12 +30,21 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		*d = Duration(n * float64(time.Second))
 		return nil
 	}
+	if s == "off" {
+		*d = Off
+		return nil
+	}
 	v, err := time.ParseDuration(s)
 	*d = Duration(v)
 	return err
 }
 
-func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(time.Duration(d).String()) }
+func (d Duration) MarshalJSON() ([]byte, error) {
+	if d < 0 {
+		return json.Marshal("off")
+	}
+	return json.Marshal(time.Duration(d).String())
+}
 
 // Timing overrides the scheduler defaults for a section or target.
 type Timing struct {
@@ -75,17 +89,22 @@ type Section interface {
 	Validate() error
 }
 
-var registry []struct {
-	key string
-	new func() Section
+type entry struct {
+	key   string
+	lists []string
+	new   func() Section
 }
 
-// Register adds a top-level config key; check modules call it from init.
-func Register(key string, new func() Section) {
-	registry = append(registry, struct {
-		key string
-		new func() Section
-	}{key, new})
+var registry []entry
+
+// Lists is a section that also reads top-level list keys, as hosts reads host.
+type Lists interface {
+	List(key string) any
+}
+
+// Register adds a top-level config key, and any list keys the section reads through Lists; check modules call it from init.
+func Register(key string, new func() Section, lists ...string) {
+	registry = append(registry, entry{key, lists, new})
 }
 
 // Sections returns the configured blocks in registration order.
@@ -103,6 +122,9 @@ func Get[T Section](c *Config) T {
 }
 
 func (c *Config) UnmarshalJSON(b []byte) error {
+	if err := checkKeys(b); err != nil {
+		return err
+	}
 	type core Config
 	if err := json.Unmarshal(b, (*core)(c)); err != nil {
 		return err
@@ -114,16 +136,73 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 	c.sections = nil
 	for _, r := range registry {
 		v, ok := raw[r.key]
-		if !ok || string(v) == "null" {
+		present := ok
+		for _, l := range r.lists {
+			_, has := raw[l]
+			present = present || has
+		}
+		if !present {
 			continue
 		}
 		s := r.new()
-		if err := json.Unmarshal(v, s); err != nil {
-			return fmt.Errorf("%s: %w", r.key, err)
+		if ok {
+			if err := json.Unmarshal(v, s); err != nil {
+				return fmt.Errorf("%s: %w", r.key, err)
+			}
+		}
+		for _, l := range r.lists {
+			if v, ok := raw[l]; ok {
+				if err := json.Unmarshal(v, s.(Lists).List(l)); err != nil {
+					return fmt.Errorf("%s: %w", l, err)
+				}
+			}
 		}
 		c.sections = append(c.sections, s)
 	}
 	return nil
+}
+
+// MarshalJSON writes the core blocks, then each section and its lists in registration order.
+func (c *Config) MarshalJSON() ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteByte('{')
+	put := func(k string, v any) error {
+		j, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("%s: %w", k, err)
+		}
+		if b.Len() > 1 {
+			b.WriteByte(',')
+		}
+		kj, _ := json.Marshal(k)
+		b.Write(kj)
+		b.WriteByte(':')
+		b.Write(j)
+		return nil
+	}
+	cv := reflect.ValueOf(*c)
+	for _, f := range coreFields() {
+		if err := put(f.name, cv.FieldByIndex(f.index).Interface()); err != nil {
+			return nil, err
+		}
+	}
+	for _, s := range c.sections {
+		for _, r := range registry {
+			if reflect.TypeOf(r.new()) != reflect.TypeOf(s) {
+				continue
+			}
+			if err := put(r.key, s); err != nil {
+				return nil, err
+			}
+			for _, l := range r.lists {
+				if err := put(l, s.(Lists).List(l)); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
 }
 
 type Hub struct {
@@ -143,8 +222,8 @@ type Hub struct {
 	Tick Duration `json:"tick"`
 	// HeartbeatInterval is how often SITESCOPE_HEARTBEAT_URL is pinged.
 	HeartbeatInterval Duration `json:"heartbeatInterval"`
-	// LockedAfter is how long the vault may stay locked before hub.vault warns; negative disables.
-	LockedAfter Duration `json:"lockedAfter"`
+	// LockedAfter is how long the vault may stay locked before hub.vault warns, or "off".
+	LockedAfter Duration `json:"lockedAfter" config:"off"`
 	Concurrency int      `json:"concurrency"`
 }
 
@@ -177,8 +256,8 @@ type Alerts struct {
 	To               []string `json:"to"`
 	SubjectPrefix    string   `json:"subjectPrefix"`
 	RenotifyInterval Duration `json:"renotifyInterval"`
-	// UnknownAfter alerts on a check stuck in unknown this long; negative disables.
-	UnknownAfter Duration `json:"unknownAfter"`
+	// UnknownAfter alerts on a check stuck in unknown this long, or "off".
+	UnknownAfter Duration `json:"unknownAfter" config:"off"`
 	DigestTime   string   `json:"digestTime"`
 	Ntfy         Ntfy     `json:"ntfy"`
 }

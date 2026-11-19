@@ -383,8 +383,8 @@ func TestNotifiers(t *testing.T) {
 }
 
 func TestNoVaultBannerWithoutSecretChecks(t *testing.T) {
-	cfg, err := config.Parse([]byte(`{"hub": {"stateDir": "` + t.TempDir() + `", "lockedAfter": "-1s"},
-		"hosts": {"hosts": [{"name": "home", "local": true, "os": "fedora", "wireguard": false}]}}`))
+	cfg, err := config.Parse([]byte(`{"hub": {"stateDir": "` + t.TempDir() + `", "lockedAfter": "off"},
+		"host": [{"name": "home", "local": true, "os": "fedora", "wireguard": false}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestNoVaultBannerWithoutSecretChecks(t *testing.T) {
 	}
 	defer h.store.Close()
 	if h.byID["hub.vault"] != nil {
-		t.Error("lockedAfter negative drops hub.vault")
+		t.Error("lockedAfter off drops hub.vault")
 	}
 	w := httptest.NewRecorder()
 	h.public(w, httptest.NewRequest("GET", "/", nil))

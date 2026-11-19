@@ -4,6 +4,7 @@ package status
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 )
 
 type Status int8
@@ -72,10 +73,47 @@ func Worst(ss ...Status) Status {
 // Alerting reports whether a status is one we notify about (as opposed to unknown/locked).
 func (s Status) Alerting() bool { return s == OK || s == Warn || s == Crit }
 
-// Threshold is a warn/crit pair; a zero bound is disabled.
+// Threshold is a warn/crit pair; a zero bound is unset (it takes the default), and "off" disables one.
 type Threshold struct {
-	Warn float64 `json:"warn"`
-	Crit float64 `json:"crit"`
+	Warn float64 `json:"warn,omitempty" config:"off"`
+	Crit float64 `json:"crit,omitempty" config:"off"`
+}
+
+// Off is a disabled bound: NaN never compares true, and Or keeps it.
+var Off = math.NaN()
+
+func (t *Threshold) UnmarshalJSON(b []byte) error {
+	var raw struct{ Warn, Crit json.RawMessage }
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	bound := func(r json.RawMessage, v *float64) error {
+		if len(r) == 0 || string(r) == "null" {
+			return nil
+		}
+		if string(r) == `"off"` {
+			*v = Off
+			return nil
+		}
+		return json.Unmarshal(r, v)
+	}
+	if err := bound(raw.Warn, &t.Warn); err != nil {
+		return err
+	}
+	return bound(raw.Crit, &t.Crit)
+}
+
+func (t Threshold) MarshalJSON() ([]byte, error) {
+	out := map[string]any{}
+	for k, v := range map[string]float64{"warn": t.Warn, "crit": t.Crit} {
+		switch {
+		case math.IsNaN(v):
+			out[k] = "off"
+		case v != 0:
+			out[k] = v
+		}
+	}
+	return json.Marshal(out)
 }
 
 // Above rates v where larger is worse (usage, age, latency).
