@@ -35,6 +35,26 @@ jobs:
           [ "$TAG" = "v$v" ] || { echo "tag $TAG doesn't match VERSION $v"; exit 1; }
           [ -f "release-notes/$v.md" ] || { echo "no release-notes/$v.md"; exit 1; }
 
+      # a release needs an annotated tag, signed by the owner's key, that GitHub verifies, on the commit being built
+      - name: Check the signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER: 602E32E9DC61AEE33584BBD67DAD569BB473919B
+        run: |
+          fail() { echo "release refused: $*"; exit 1; }
+          api=repos/$GITHUB_REPOSITORY/git
+          [ "$(gh api "$api/ref/tags/$TAG" --jq .object.type)" = tag ] || fail "$TAG isn't an annotated tag"
+          obj=$(gh api "$api/ref/tags/$TAG" --jq .object.sha)
+          [ "$(gh api "$api/tags/$obj" --jq .verification.verified)" = true ] || fail "GitHub doesn't verify $TAG's signature"
+          reason=$(gh api "$api/tags/$obj" --jq .verification.reason)
+          [ "$reason" = valid ] || fail "$TAG's verification reason is $reason, not valid"
+          target=$(gh api "$api/tags/$obj" --jq .object.sha)
+          [ "$target" = "$(git rev-parse HEAD)" ] || fail "$TAG points at $target, not the checked-out $(git rev-parse HEAD)"
+          signer=$(gh api "$api/tags/$obj" --jq .verification.signature | gpg --list-packets 2>/dev/null |
+            sed -n 's/.*hashed subpkt 33 len [0-9]* (issuer fpr v[0-9] \([0-9A-F]*\)).*/\1/p' | head -1)
+          [ "$signer" = "$SIGNER" ] || fail "$TAG is signed by ${signer:-an unknown key}, not $SIGNER"
+          echo "$TAG: annotated, verified, signed by $signer, at $target"
+
       - name: Test
         run: go test ./...
 
