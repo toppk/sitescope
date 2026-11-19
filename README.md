@@ -178,6 +178,25 @@ shows settings generated from an inventory.
 Try a config without the daemon: `sitescope check -config FILE [-match dns.soa]`
 runs every non-credential check once and exits 2 if any is crit.
 
+## Install
+
+Each [release](https://github.com/toppk/sitescope/releases) has static
+binaries for Linux on x86-64 and arm64, with `SHA256SUMS`:
+
+```sh
+v=1.6.0
+curl -fLO https://github.com/toppk/sitescope/releases/download/v$v/sitescope-$v-linux-amd64.tar.gz
+curl -fLO https://github.com/toppk/sitescope/releases/download/v$v/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+tar xzf sitescope-$v-linux-amd64.tar.gz
+./sitescope-$v-linux-amd64/sitescope version
+```
+
+From source: `nix build github:toppk/sitescope/v1.6.0`, or
+`go install github.com/toppk/sitescope@v1.6.0` (which reports
+`1.6.0+dev`). On NixOS, use the flake's module; see
+[Getting started](https://toppk.github.io/sitescope/getting-started.html).
+
 ## Development
 
 ```sh
@@ -189,3 +208,7 @@ nix flake check      # package + module evaluated as hub (with local agent) and 
 Bump `vendorHash` in `nix/package.nix` whenever `go.sum` changes.
 
 Docs: `site/build.sh _site` (pandoc), published by `.github/workflows/pages.yml`.
+
+## License
+
+MIT; see [LICENSE](LICENSE).

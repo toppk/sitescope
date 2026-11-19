@@ -2,7 +2,7 @@
 site-title: sitescope
 site-tagline: a small health monitor and status page for a few hosts
 site-logo: assets/logo.png
-site-footer: 'sitescope · <a href="https://github.com/toppk/sitescope">github.com/toppk/sitescope</a>'
+site-footer: 'sitescope · MIT licensed · <a href="https://github.com/toppk/sitescope">github.com/toppk/sitescope</a>'
 llms: llms.txt
 top-links:
   - label: Docs

@@ -19,7 +19,7 @@ description: Install sitescope with its NixOS module, deploy a hub and agents, a
 ## Add the flake
 
 ```nix
-inputs.sitescope.url = "github:toppk/sitescope";
+inputs.sitescope.url = "github:toppk/sitescope/v1.6.0";   # a release tag, or a commit
 inputs.sitescope.inputs.nixpkgs.follows = "nixpkgs";
 ```
 

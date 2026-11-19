@@ -53,7 +53,15 @@ go build -ldflags "-X main.version=$(cat VERSION)+$(git rev-parse --short HEAD)"
 A release: bump `VERSION`, write `release-notes/X.Y.Z.md` from
 `release-notes/TEMPLATE.md`, `git add -A`, `nix flake check`, check
 `nix build && ./result/bin/sitescope version`, commit, push, and hand infra
-the commit to pin. Tags are optional; nothing reads them.
+the commit to pin.
+
+Once the commit is approved, tag it `vX.Y.Z`, annotated and signed
+(`git tag -s`), and push the tag. That runs `.github/workflows/release.yml`.
+It checks that the tag matches `VERSION`, runs the tests, builds static
+tarballs for linux-amd64 and linux-arm64 (binary, LICENSE, README, release
+notes) with `SHA256SUMS`, and publishes them as the GitHub release, with the
+release notes as its text. Every release since 1.1.0 is tagged; 1.6.0 is
+the first with binaries.
 
 ## Layout
 

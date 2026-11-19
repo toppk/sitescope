@@ -12,12 +12,24 @@ agent process, plus devices on the network.
 
 ## The binary
 
+Download a release's tarball for your architecture (`linux-amd64` or
+`linux-arm64`) from the
+[releases](https://github.com/toppk/sitescope/releases), and check it
+against the release's `SHA256SUMS`:
+
 ```sh
-nix build github:toppk/sitescope/<commit>
-./result/bin/sitescope version     # X.Y.Z+<short commit>
+v=1.6.0
+curl -fLO https://github.com/toppk/sitescope/releases/download/v$v/sitescope-$v-linux-amd64.tar.gz
+curl -fLO https://github.com/toppk/sitescope/releases/download/v$v/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+tar xzf sitescope-$v-linux-amd64.tar.gz
+./sitescope-$v-linux-amd64/sitescope version     # 1.6.0+<short commit>
 ```
 
-Copy `result/bin/sitescope` somewhere that doesn't change underneath the
+Or build it: `nix build github:toppk/sitescope/v1.6.0`, then use
+`result/bin/sitescope`.
+
+Copy the binary somewhere that doesn't change underneath the
 running unit, e.g. one directory per release with a `current` symlink.
 
 ## The local host
