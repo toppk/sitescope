@@ -1,11 +1,14 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"sync"
@@ -211,7 +214,8 @@ func resolve(ctx context.Context, host, family string) (net.IP, error) {
 }
 
 // Echo sends count ICMP echo requests and returns the replies' round trips. It uses an unprivileged
-// ping socket, or, where the system has none (FreeBSD, OpenBSD), a raw socket, which needs root.
+// ping socket, or, where the system has none (FreeBSD, OpenBSD), a raw socket as root, or else the
+// system's setuid /sbin/ping.
 func Echo(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
 	network, rawNetwork, laddr, proto := "udp4", "ip4:icmp", "0.0.0.0", 1
 	var typ icmp.Type = ipv4.ICMPTypeEcho
@@ -223,6 +227,9 @@ func Echo(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
 	if errors.Is(err, syscall.EPROTONOSUPPORT) {
 		conn, err = icmp.ListenPacket(rawNetwork, laddr)
 		raw = true
+	}
+	if raw && errors.Is(err, os.ErrPermission) && (runtime.GOOS == "freebsd" || runtime.GOOS == "openbsd") {
+		return systemPing(ctx, ip, count)
 	}
 	if err != nil {
 		switch {
@@ -288,4 +295,34 @@ func Echo(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
 		}
 	}
 	return rtts, nil
+}
+
+// systemPing runs the BSDs' setuid ping on the resolved address, one echo a second, the fastest an ordinary user may.
+func systemPing(ctx context.Context, ip net.IP, count int) ([]time.Duration, error) {
+	cmd, wait := "/sbin/ping", "-W1000"
+	if runtime.GOOS == "openbsd" {
+		wait = "-w1"
+	}
+	if ip.To4() == nil {
+		cmd = "/sbin/ping6"
+	}
+	out, err := exec.CommandContext(ctx, cmd, "-n", "-c", strconv.Itoa(count), wait, ip.String()).Output()
+	rtts := ParsePingTimes(out)
+	if err != nil && len(rtts) == 0 && !bytes.Contains(out, []byte("packets transmitted")) {
+		return nil, fmt.Errorf("%s: %w", cmd, err)
+	}
+	return rtts, nil
+}
+
+var pingTime = regexp.MustCompile(`bytes from .*time=([0-9.]+) ms`)
+
+// ParsePingTimes reads the round trip of each reply line of BSD ping output.
+func ParsePingTimes(out []byte) []time.Duration {
+	var rtts []time.Duration
+	for _, m := range pingTime.FindAllSubmatch(out, -1) {
+		if ms, err := strconv.ParseFloat(string(m[1]), 64); err == nil {
+			rtts = append(rtts, time.Duration(ms*float64(time.Millisecond)))
+		}
+	}
+	return rtts
 }

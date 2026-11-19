@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,15 +30,32 @@ func (u Unit) severity() Status {
 	return Crit
 }
 
-func (u Unit) validate(host string) error {
-	if !strings.Contains(u.Name, ".") {
-		return fmt.Errorf("hosts: %s unit %q needs its suffix, e.g. %s.service", host, u.Name, u.Name)
-	}
+var rcName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+
+func (u Unit) validate(host, platform string) error {
 	if u.Severity != "" && u.Severity != "warn" && u.Severity != "crit" {
 		return fmt.Errorf("hosts: %s unit %s severity %q, want warn or crit", host, u.Name, u.Severity)
 	}
+	if platform != "linux" {
+		switch {
+		case systemdSuffix.MatchString(u.Name):
+			return fmt.Errorf("hosts: %s unit %q: systemd units are Linux only; on %s, name the rc service, e.g. sshd", host, u.Name, platform)
+		case !rcName.MatchString(u.Name):
+			return fmt.Errorf("hosts: %s unit %q isn't an rc service name", host, u.Name)
+		case u.User:
+			return fmt.Errorf("hosts: %s unit %s: user units are Linux only", host, u.Name)
+		case u.MaxAge > 0:
+			return fmt.Errorf("hosts: %s unit %s: maxAge is for timers, which are Linux only", host, u.Name)
+		}
+		return nil
+	}
+	if !strings.Contains(u.Name, ".") {
+		return fmt.Errorf("hosts: %s unit %q needs its suffix, e.g. %s.service", host, u.Name, u.Name)
+	}
 	return nil
 }
+
+var systemdSuffix = regexp.MustCompile(`\.(service|timer|socket|mount|path|target)$`)
 
 func unitQuery(units []Unit) agent.UnitQuery {
 	var q agent.UnitQuery

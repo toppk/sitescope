@@ -107,12 +107,19 @@ const maxListed = 4
 
 func over(span time.Duration) string { return "over " + fmtDuration(span.Round(time.Second)) }
 
-func EvalCPU(r Rates, busy Threshold) Result {
-	msg := fmt.Sprintf("%.0f%% busy %s (iowait %.0f%%, steal %.0f%%", r.CPUBusy, over(r.Span), r.IOWait, r.Steal)
-	if p, ok := r.PSISome["cpu"]; ok {
-		msg += fmt.Sprintf(", tasks waited %.1f%% of the time", p)
+func EvalCPU(r Rates, busy Threshold) Result { return evalCPU(r, busy, true) }
+
+// evalCPU leaves out iowait and steal where the system has no such measure (the BSDs).
+func evalCPU(r Rates, busy Threshold, linux bool) Result {
+	msg := fmt.Sprintf("%.0f%% busy %s", r.CPUBusy, over(r.Span))
+	if linux {
+		msg += fmt.Sprintf(" (iowait %.0f%%, steal %.0f%%", r.IOWait, r.Steal)
+		if p, ok := r.PSISome["cpu"]; ok {
+			msg += fmt.Sprintf(", tasks waited %.1f%% of the time", p)
+		}
+		msg += ")"
 	}
-	return Rated(busy.Above(r.CPUBusy), "%s)", msg)
+	return Rated(busy.Above(r.CPUBusy), "%s", msg)
 }
 
 // EvalMemPressure looks past usage at what memory shortage costs: stalls, swap-in, OOM kills.

@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1068,5 +1069,74 @@ func TestDiskRulesAndSkip(t *testing.T) {
 		if _, err := config.Parse([]byte(`{"host": [{"name": "a", "local": true, ` + bad + `}]}`)); err == nil {
 			t.Errorf("%s should not validate", bad)
 		}
+	}
+}
+
+func TestBSDHostChecks(t *testing.T) {
+	ids := func(os string) []string {
+		cfg, err := config.Parse([]byte(`{"host": [{"name": "b", "url": "http://10.0.0.9:9105", "os": "` + os + `", "wireguard": false,
+			"units": [{"name": "sshd"}]}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		checks, err := Build(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, c := range checks {
+			out = append(out, strings.TrimPrefix(c.ID, "host.b.")+"="+strings.TrimPrefix(c.Name, "b "))
+		}
+		return out
+	}
+	common := []string{"agent=agent reachable", "disk=disk usage", "memory=memory", "swap=swap", "load=load average",
+		"cpu=CPU", "network=network", "unit.sshd=sshd", "updates=package updates"}
+	for _, tc := range []struct {
+		os        string
+		with, not []string
+	}{
+		{"freebsd", append(slices.Clone(common), "reboot=reboot needed"), []string{"units", "cgroups", "pressure", "diskio", "nixpkgs"}},
+		{"openbsd", append(slices.Clone(common), "units=failed rc services"), []string{"reboot", "cgroups", "pressure", "diskio", "nixpkgs"}},
+	} {
+		got := ids(tc.os)
+		for _, w := range tc.with {
+			if !slices.Contains(got, w) {
+				t.Errorf("%s lacks %s: %v", tc.os, w, got)
+			}
+		}
+		for _, n := range tc.not {
+			if slices.ContainsFunc(got, func(g string) bool { return strings.HasPrefix(g, n+"=") }) {
+				t.Errorf("%s has %s (Linux only): %v", tc.os, n, got)
+			}
+		}
+	}
+	for _, bad := range []string{`{"name": "sshd.service"}`, `{"name": "backup.timer"}`, `{"name": "sshd", "user": true}`, `{"name": "x", "maxAge": "1h"}`, `{"name": "a b"}`} {
+		if _, err := config.Parse([]byte(`{"host": [{"name": "b", "url": "http://x", "os": "freebsd", "units": [` + bad + `]}]}`)); err == nil {
+			t.Errorf("freebsd unit %s should be refused", bad)
+		}
+	}
+	if _, err := config.Parse([]byte(`{"host": [{"name": "b", "url": "http://x", "units": [{"name": "sshd"}]}]}`)); err == nil {
+		t.Error("on Linux a unit needs its suffix")
+	}
+}
+
+func TestParsePingTimes(t *testing.T) {
+	out := "PING 127.0.0.1 (127.0.0.1): 56 data bytes\n64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=0.039 ms\n64 bytes from 127.0.0.1: icmp_seq=1 ttl=255 time=12.5 ms\n\n--- 127.0.0.1 ping statistics ---\n2 packets transmitted, 2 packets received, 0.0% packet loss\nround-trip min/avg/max/stddev = 0.039/0.049/0.060/0.011 ms\n"
+	rtts := ParsePingTimes([]byte(out))
+	if len(rtts) != 2 || rtts[0] != 39*time.Microsecond || rtts[1] != 12500*time.Microsecond {
+		t.Errorf("rtts = %v", rtts)
+	}
+	if rtts := ParsePingTimes([]byte("2 packets transmitted, 0 packets received, 100.0% packet loss\n")); len(rtts) != 0 {
+		t.Errorf("lost = %v", rtts)
+	}
+}
+
+func TestCPUMessagePerSystem(t *testing.T) {
+	r := Rates{CPUBusy: 12, Span: 2 * time.Minute}
+	if m := evalCPU(r, Threshold{Warn: 85, Crit: 95}, true).Message; m != "12% busy over 2m (iowait 0%, steal 0%)" {
+		t.Errorf("linux = %q", m)
+	}
+	if m := evalCPU(r, Threshold{Warn: 85, Crit: 95}, false).Message; m != "12% busy over 2m" {
+		t.Errorf("bsd = %q", m)
 	}
 }

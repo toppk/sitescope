@@ -80,6 +80,18 @@ type DiskRule struct {
 	Ignore bool      `json:"ignore,omitempty"`
 }
 
+// Platform is the agent's system family: "linux" (any Linux, the default), "freebsd" or "openbsd".
+func (h Host) Platform() string { return Platform(h.OS) }
+
+// Platform maps an os-release ID or a GOOS to a platform; everything but the BSDs is Linux.
+func Platform(os string) string {
+	switch os {
+	case "freebsd", "openbsd":
+		return os
+	}
+	return "linux"
+}
+
 // skippable are the per-host checks a host's skip may name.
 var skippable = []string{"disk", "memory", "swap", "load", "units", "cgroups", "cpu", "pressure", "diskio", "network",
 	"wireguard", "reboot", "nixpkgs", "updates", "postfix", "knot"}
@@ -118,7 +130,7 @@ func (hs *Hosts) Validate() error {
 			return fmt.Errorf("hosts: %s needs a url, or local: true", h.Name)
 		}
 		for _, u := range h.Units {
-			if err := u.validate(h.Name); err != nil {
+			if err := u.validate(h.Name, h.Platform()); err != nil {
 				return err
 			}
 		}
@@ -167,8 +179,16 @@ func (hs *Hosts) build(b *builder) {
 		d("memory", "memory", "hosts", "memory", func(r *report.Report, _ time.Time) Result { return EvalMemory(r, hs.Memory) })
 		d("swap", "swap", "hosts", "memory", func(r *report.Report, _ time.Time) Result { return EvalSwap(r, hs.Swap) })
 		d("load", "load average", "hosts", "load", func(r *report.Report, _ time.Time) Result { return EvalLoad(r, hs.Load) })
-		d("units", "failed systemd units", "hosts", "units", func(r *report.Report, _ time.Time) Result { return EvalUnits(r) })
-		d("cgroups", "unit memory", "hosts", "cgroups", func(r *report.Report, _ time.Time) Result { return EvalUnitMemory(r, hs.UnitMemory) })
+		linux := h.Platform() == "linux"
+		switch h.Platform() {
+		case "linux":
+			d("units", "failed systemd units", "hosts", "units", func(r *report.Report, _ time.Time) Result { return EvalUnits(r) })
+		case "openbsd":
+			d("units", "failed rc services", "hosts", "units", func(r *report.Report, _ time.Time) Result { return EvalUnits(r) })
+		}
+		if linux {
+			d("cgroups", "unit memory", "hosts", "cgroups", func(r *report.Report, _ time.Time) Result { return EvalUnitMemory(r, hs.UnitMemory) })
+		}
 		w := func(id, name string, eval func(Rates) Result) {
 			if slices.Contains(h.Skip, id) {
 				return
@@ -176,9 +196,11 @@ func (hs *Hosts) build(b *builder) {
 			b.add(derived, &Check{ID: "host." + h.Name + "." + id, Name: h.Name + " " + name, Area: "hosts", Group: h.Name,
 				DependsOn: agentID, Run: fromWindow(h.Name, stale, hs.RateWindow.D(), eval)})
 		}
-		w("cpu", "CPU", func(r Rates) Result { return EvalCPU(r, hs.CPU) })
-		w("pressure", "memory pressure", func(r Rates) Result { return EvalMemPressure(r, hs.MemoryStall, hs.SwapIn) })
-		w("diskio", "disk I/O", func(r Rates) Result { return EvalDiskIO(r, hs.DiskBusy, hs.IOStall) })
+		w("cpu", "CPU", func(r Rates) Result { return evalCPU(r, hs.CPU, linux) })
+		if linux {
+			w("pressure", "memory pressure", func(r Rates) Result { return EvalMemPressure(r, hs.MemoryStall, hs.SwapIn) })
+			w("diskio", "disk I/O", func(r Rates) Result { return EvalDiskIO(r, hs.DiskBusy, hs.IOStall) })
+		}
 		w("network", "network", func(r Rates) Result { return EvalNetwork(r, hs.NetErrors, hs.NetMbps) })
 		if h.WireGuard == nil || *h.WireGuard {
 			d("wireguard", "WireGuard handshakes", "hosts", "wireguard", func(r *report.Report, now time.Time) Result {
@@ -194,7 +216,9 @@ func (hs *Hosts) build(b *builder) {
 				return EvalNixpkgs(r, now, hs.NixpkgsAge)
 			})
 		} else {
-			d("reboot", "reboot needed", "hygiene", "kernel", func(r *report.Report, _ time.Time) Result { return EvalKernel(r) })
+			if h.Platform() != "openbsd" {
+				d("reboot", "reboot needed", "hygiene", "kernel", func(r *report.Report, _ time.Time) Result { return EvalKernel(r) })
+			}
 			d("updates", "package updates", "hygiene", "packages", func(r *report.Report, now time.Time) Result {
 				return EvalPackages(r, now, hs.UpdatesAge)
 			})

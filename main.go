@@ -205,10 +205,13 @@ func runHub(args []string) error {
 	if err != nil {
 		return err
 	}
-	if hs := config.Get[*check.Hosts](cfg); hs != nil && !agent.Supported {
+	if hs := config.Get[*check.Hosts](cfg); hs != nil {
 		for _, h := range hs.Hosts {
-			if h.Local {
-				return fmt.Errorf("hosts: %s is local, which needs the Linux collectors; on %s, run the agent on a Linux host and give its url", h.Name, runtime.GOOS)
+			switch {
+			case h.Local && !agent.Supported:
+				return fmt.Errorf("hosts: %s is local, but the agent has no collectors for %s; run the agent on another host and give its url", h.Name, runtime.GOOS)
+			case h.Local && h.Platform() != check.Platform(runtime.GOOS):
+				return fmt.Errorf("hosts: %s is local, so its os must name this system (%s), not %q", h.Name, runtime.GOOS, h.OS)
 			}
 		}
 	}
