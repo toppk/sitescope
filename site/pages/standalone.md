@@ -1,7 +1,7 @@
 ---
 title: Without NixOS
 eyebrow: Use
-lede: One static binary and one systemd user unit. A hub on Fedora or another distribution, watching its own host in-process plus the devices around it.
+lede: One static binary and one systemd user unit. A hub on Fedora or another distribution, watching its own host in-process plus the devices around it; or a hub on FreeBSD or OpenBSD.
 description: Run a sitescope hub as an ordinary user on a distribution other than NixOS, with the local host collected in-process.
 ---
 
@@ -13,9 +13,10 @@ agent process, plus devices on the network.
 ## The binary
 
 Starting with 1.6.0, [releases](https://github.com/toppk/sitescope/releases)
-include static Linux binaries; earlier releases are tags only. Download the
-tarball for your architecture (`linux-amd64` or `linux-arm64`) and check it
-against the release's `SHA256SUMS`:
+include static binaries; earlier releases are tags only. Download the
+tarball for your system (`linux-amd64` or `linux-arm64`; from 1.7.0 also
+`freebsd-amd64` and `openbsd-amd64`) and check it against the release's
+`SHA256SUMS`:
 
 ```sh
 v=1.6.0
@@ -140,3 +141,24 @@ sitescope verify -url http://127.0.0.1:8470 -version X.Y.Z+<short commit>
 
 Put a reverse proxy with TLS in front of `listen` to serve the page beyond
 loopback.
+
+## On FreeBSD and OpenBSD
+
+From 1.7.0 the hub and the CLI run on FreeBSD and OpenBSD (x86-64): the
+vault, the control socket, the status page and every check that works over
+the network. Tested on FreeBSD 15.1 and OpenBSD 8.0.
+
+- **No agent, and no local host.** The agent's collectors read Linux's
+  `/proc`, `/sys` and systemd, so `sitescope agent` refuses to start, and a
+  hub with a `local = true` host refuses to start. Watch Linux hosts through
+  their agents (`url`), as usual.
+- **Ping needs root.** Neither system has Linux's unprivileged ping socket,
+  so ICMP needs a raw socket. Run as an ordinary user, a ping check fails
+  and says so. TCP, HTTP and IPP device checks need no privilege.
+- **Locked memory.** The vault's buffers are `mlock`ed, like
+  `LimitMEMLOCK=1M` on Linux. FreeBSD's default login class allows 64 KiB:
+  raise `memorylocked` to `1M` in `/etc/login.conf` and run `cap_mkdb`.
+  OpenBSD's default is ample.
+- **The service.** There's no systemd unit, so run
+  `sitescope hub -config /path/config.toml` under the system's own service
+  manager: an `rc.d` script, or `daemon(8)` on FreeBSD.

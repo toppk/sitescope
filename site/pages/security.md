@@ -42,8 +42,8 @@ only, probes only ask, and the open-relay probe stops at `RCPT TO`.
 
 | measure | effect |
 |---|---|
-| `mlock` + `MADV_DONTDUMP` on the vault buffer | secrets aren't swapped out or written to crash dumps |
-| `PR_SET_DUMPABLE=0` | no ptrace or `/proc/PID/mem` from same-user processes |
+| `mlock`, and `MADV_DONTDUMP` (Linux), `MAP_NOCORE` (FreeBSD) or `MAP_CONCEAL` (OpenBSD) on the vault buffer | secrets aren't swapped out or written to crash dumps |
+| `PR_SET_DUMPABLE=0` (Linux), `procctl(PROC_TRACE_CTL)` (FreeBSD), `kern.global_ptrace=0` (OpenBSD's default) | no ptrace or memory reads from same-user processes |
 | `LimitCORE=0`, `RLIMIT_CORE=0` | no core files |
 | buffers zeroed on lock, SIGTERM and exit | a locked hub holds no plaintext |
 | separate users for hub and agent | the vault process has no capabilities |

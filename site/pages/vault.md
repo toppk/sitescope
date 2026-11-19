@@ -48,10 +48,15 @@ After `vault set`, the running hub keeps the old contents until the next
 ## In memory
 
 - The decrypted vault lives in one buffer allocated with `mmap`, outside
-  the Go heap, `mlock`ed (never swapped) and marked `MADV_DONTDUMP`.
+  the Go heap, `mlock`ed (never swapped) and kept out of core dumps:
+  `MADV_DONTDUMP` on Linux, `MAP_NOCORE` on FreeBSD, `MAP_CONCEAL` on
+  OpenBSD.
 - It is zeroed and unmapped on `lock`, on SIGTERM and on exit.
-- The process is not dumpable (`PR_SET_DUMPABLE=0`) and has no core
-  limit, so other processes of the same user can't read its memory.
+- Other processes of the same user can't read its memory. On Linux the
+  process isn't dumpable (`PR_SET_DUMPABLE=0`). On FreeBSD it turns off
+  tracing with `procctl(PROC_TRACE_CTL)`. On OpenBSD the default
+  `kern.global_ptrace=0` already limits ptrace to a process's own children.
+  Its core limit is zero everywhere.
 - Secrets are never logged, and never part of an error.
 
 ::: warning

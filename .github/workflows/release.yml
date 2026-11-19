@@ -1,4 +1,4 @@
-# Builds the Linux tarballs for a vX.Y.Z tag and publishes them as a GitHub release.
+# Builds the tarballs for a vX.Y.Z tag and publishes them as a GitHub release.
 # A tag push runs it; workflow_dispatch runs it for a tag pushed before this workflow existed.
 name: Release
 
@@ -65,7 +65,7 @@ jobs:
           # a release tagged before LICENSE was added takes it from the workflow's commit
           [ -f LICENSE ] || git show "$GITHUB_SHA:LICENSE" > LICENSE
           mkdir -p dist
-          for t in linux/amd64 linux/arm64; do
+          for t in linux/amd64 linux/arm64 freebsd/amd64 openbsd/amd64; do
             n="sitescope-$v-${t%/*}-${t#*/}"
             mkdir -p "stage/$n"
             CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -trimpath -ldflags "-s -w -X main.version=$ver" -o "stage/$n/sitescope" .

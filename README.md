@@ -70,9 +70,10 @@ period and some grace.
 Credentials live in `/var/lib/sitescope/vault.age`, encrypted with age in
 passphrase mode (scrypt, work factor 2^15, which needs 32 MiB transiently; the
 age default 2^18 would need 256 MiB and exceed MemoryMax). Decrypted values
-only exist in an mlocked, MADV_DONTDUMP buffer outside the Go heap. The buffer
-is zeroed on `lock`, on SIGTERM and on exit. The process sets PR_SET_DUMPABLE=0 and
-RLIMIT_CORE=0. Known limits: a value is copied to the heap for the moment it
+only exist in an mlocked buffer outside the Go heap, kept out of core dumps
+(MADV_DONTDUMP on Linux, MAP_NOCORE on FreeBSD, MAP_CONCEAL on OpenBSD). The buffer
+is zeroed on `lock`, on SIGTERM and on exit. The process blocks same-user ptrace
+(PR_SET_DUMPABLE=0 on Linux, procctl PROC_TRACE_CTL on FreeBSD) and sets RLIMIT_CORE=0. Known limits: a value is copied to the heap for the moment it
 is placed in an `Authorization` header, and age's own decryption chunk buffer
 is heap memory.
 
@@ -181,8 +182,9 @@ runs every non-credential check once and exits 2 if any is crit.
 ## Install
 
 Starting with 1.6.0, [releases](https://github.com/toppk/sitescope/releases)
-include static Linux binaries for x86-64 and arm64, with `SHA256SUMS`.
-Earlier releases are tags only:
+include static binaries, with `SHA256SUMS`: Linux on x86-64 and arm64, and,
+from 1.7.0, FreeBSD and OpenBSD on x86-64 (the hub and CLI; the agent runs on
+Linux only). Earlier releases are tags only:
 
 ```sh
 v=1.6.0

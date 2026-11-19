@@ -41,7 +41,13 @@ No behaviour change; groundwork for what follows.
 - The config may be TOML, with the same keys, defaults and checks.
 - Docs written in that form, with NixOS settings as one way to produce it.
 
-## 1.7.0: logs and metrics
+## 1.7.0: FreeBSD and OpenBSD (released)
+
+- The hub and the CLI on FreeBSD and OpenBSD, with their own vault
+  hardening; release tarballs for both on x86-64. The agent stays Linux
+  only.
+
+## 1.8.0: logs and metrics
 
 - Kernel and journal watching: counted rules, with ignore, info-level and
   allowlist rules, so a burst of lines is one alert.

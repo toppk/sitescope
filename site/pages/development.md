@@ -60,10 +60,20 @@ Once the commit is approved, tag it `vX.Y.Z`, annotated and signed
 It refuses the release unless the tag is annotated, GitHub verifies its
 signature, it was signed by the owner's key, it points at the commit being
 built, and it matches `VERSION`. It then runs the tests, builds static
-tarballs for linux-amd64 and linux-arm64 (binary, LICENSE, README, release
-notes) with `SHA256SUMS`, and publishes them as the GitHub release, with the
+tarballs for linux-amd64, linux-arm64, freebsd-amd64 and openbsd-amd64
+(binary, LICENSE, README, release notes) with `SHA256SUMS`, and publishes them as the GitHub release, with the
 release notes as its text. Every release since 1.1.0 is tagged; 1.6.0 is
 the first with binaries.
+
+## Platforms
+
+Linux is the main platform. The hub and CLI also build for FreeBSD and
+OpenBSD: code that differs per system lives in `*_linux.go`, `*_freebsd.go`
+and `*_openbsd.go` files (the vault's memory hardening, the terminal and
+peer-credential calls), and the agent's Linux-only parts have a
+`sys_other.go` stub. CI vets both BSD builds on every push. Before a
+release, run `go test ./...` natively on FreeBSD and OpenBSD as well; the
+ping test needs root there to exercise the raw-socket path.
 
 ## Layout
 
