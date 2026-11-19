@@ -78,7 +78,7 @@ var commands = []command{
 		return err
 	}},
 	{"config", groups[2], [][2]string{
-		{"config -config FILE [-check] [-format json]", "print the effective config as TOML, every default filled in; -check only validates it"},
+		{"config -config FILE [-check] [-format json|nix]", "print the effective config as TOML, every default filled in; -check only validates it"},
 		{"config -defaults", "print every key with its built-in default"},
 	}, runConfig},
 	{"check", groups[2], [][2]string{{"check -config FILE [-match SUBSTR] [-format json]", "run checks once and print results; exits 2 if any is crit"}}, runCheck},
@@ -315,14 +315,14 @@ func runConfig(args []string) error {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
 	only := fs.Bool("check", false, "validate the config and build its checks; print nothing but a count")
 	ref := fs.Bool("defaults", false, "print every key with its built-in default, instead of reading a config")
-	format := fs.String("format", "toml", "output format: toml or json")
+	format := fs.String("format", "toml", "output format: toml, json, or nix for services.sitescope.settings")
 	path := fs.String("config", defaultConfig(), "config file, .toml or .json")
 	fs.Parse(args)
 	if fs.NArg() > 0 {
 		return fmt.Errorf("config: unexpected argument %q", fs.Arg(0))
 	}
-	if *format != "toml" && *format != "json" {
-		return fmt.Errorf("-format %q, want toml or json", *format)
+	if *format != "toml" && *format != "json" && *format != "nix" {
+		return fmt.Errorf("-format %q, want toml, json or nix", *format)
 	}
 	cfg := config.Reference()
 	if !*ref {
@@ -349,12 +349,15 @@ func runConfig(args []string) error {
 	if err != nil {
 		return err
 	}
-	if *format == "json" {
+	switch *format {
+	case "json":
 		var out bytes.Buffer
 		json.Indent(&out, doc, "", "  ")
 		out.WriteByte('\n')
 		_, err := out.WriteTo(os.Stdout)
 		return err
+	case "nix":
+		return config.WriteNix(os.Stdout, doc)
 	}
 	return config.WriteTOML(os.Stdout, doc)
 }

@@ -169,7 +169,7 @@ func TestConfigReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, block, ok := strings.Cut(string(page), "<!-- TestConfigReference")
+	_, block, ok := strings.Cut(string(page), "TestConfigReference checks this block")
 	if !ok {
 		t.Fatal("configuration.md has no reference block")
 	}

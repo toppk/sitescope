@@ -97,6 +97,11 @@ in
     "PrivateTmp=true"
   ];
 
+  # the docs' Nix examples come from the same writer as testdata/config.nix
+  config-nix-matches-json =
+    assert import ../testdata/config.nix == builtins.fromJSON (builtins.readFile ../testdata/config.json);
+    pkgs.emptyFile;
+
   # a misspelled key fails the system build, naming the key
   module-config-check-passes = builtins.head hub.system.checks;
   module-config-check-fails =

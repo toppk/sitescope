@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -21,10 +20,13 @@ func fromTOML(b []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// a table declared only through its subtables, like [mail.banner], is placed at its first one
 	order := map[string]int{}
 	for i, k := range md.Keys() {
-		if _, ok := order[k.String()]; !ok {
-			order[k.String()] = i
+		for j := 1; j <= len(k); j++ {
+			if _, ok := order[k[:j].String()]; !ok {
+				order[k[:j].String()] = i
+			}
 		}
 	}
 	var out bytes.Buffer
@@ -181,14 +183,9 @@ func (n *node) table(top bool) bool {
 
 // WriteTOML writes a JSON config document as TOML; null values are left out.
 func WriteTOML(w io.Writer, doc []byte) error {
-	dec := json.NewDecoder(bytes.NewReader(doc))
-	dec.UseNumber()
-	root, err := readNode(dec)
+	root, err := readDoc(doc)
 	if err != nil {
 		return err
-	}
-	if !root.isObj {
-		return errors.New("toml: want an object")
 	}
 	var b strings.Builder
 	writeTable(&b, root, nil, false)
