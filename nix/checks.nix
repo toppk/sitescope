@@ -97,6 +97,24 @@ in
     "PrivateTmp=true"
   ];
 
+  # a misspelled key fails the system build, naming the key
+  module-config-check-passes = builtins.head hub.system.checks;
+  module-config-check-fails =
+    let
+      bad = eval "bad" {
+        services.sitescope = {
+          enable = true;
+          role = "hub";
+          settings.hosts.swapin.warn = 5;
+        };
+      };
+      failure = pkgs.testers.testBuildFailure (builtins.head bad.system.checks);
+    in
+    pkgs.runCommand "sitescope-config-check-fails" { } ''
+      grep -qF 'hosts.swapin: unknown key (did you mean swapIn?)' ${failure}/testBuildFailure.log
+      touch $out
+    '';
+
   # the agent host runs no hub, and the generated config carries the wiring
   module-agent-config =
     assert !(agent.systemd.services ? sitescope);

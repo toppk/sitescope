@@ -9,6 +9,10 @@ let
   cfg = config.services.sitescope;
   format = pkgs.formats.json { };
   configFile = format.generate "sitescope.json" cfg.settings;
+  # schema only: keys, types and values, with no secrets or runtime files needed
+  configCheck = pkgs.runCommand "sitescope-config-check" { } ''
+    ${lib.getExe cfg.package} config -check -config ${configFile} > $out
+  '';
   runHub = cfg.role == "hub";
   runAgent = cfg.role == "agent" || cfg.agent.enable;
   agentAddr = if cfg.role == "agent" then cfg.listenAddress else cfg.agent.listenAddress;
@@ -113,6 +117,7 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
+        system.checks = [ configCheck ];
         assertions = [
           {
             assertion = !runAgent || agentAddr != "";
