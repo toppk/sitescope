@@ -22,9 +22,9 @@ sitescope <command> [flags]
 ## Talking to the hub
 
 These connect to the control socket: `-socket`, or else `hub.controlSocket`
-from the hub's config (`-config`, `$SITESCOPE_CONFIG` or
-`/etc/sitescope/config.json`). With neither a socket nor a config, they
-stop with an error rather than guess. You need to be in the admin group.
+from the hub's config (`-config`, `$SITESCOPE_CONFIG`, or
+`/etc/sitescope/config.toml` or `config.json`). With neither a socket nor
+a config, they stop with an error rather than guess. You need to be in the admin group.
 
 `sitescope unlock`
 :   Asks for the vault passphrase on the terminal, without echo, and sends
@@ -64,12 +64,16 @@ error. Run them as the hub user:
 
 ## The config
 
-`sitescope config -config FILE [-check]`
-:   Prints the effective config as JSON, with every default filled in.
-    With `-check` it only validates the config and builds its checks, and
-    prints the count. An unknown key fails with its path, as in
+`sitescope config -config FILE [-check] [-format json]`
+:   Prints the effective config as TOML, with every default filled in, or
+    as JSON with `-format json`. With `-check` it only validates the
+    config and builds its checks, and prints the count. An unknown key
+    fails with its path, as in
     `hosts.swapin: unknown key (did you mean swapIn?)`. See
     [Checking a config](configuration.html#checking-a-config).
+
+`sitescope config -defaults [-format json]`
+:   Prints every key with its built-in default, without reading a config.
 
 ## One-shot checks
 
@@ -81,7 +85,7 @@ error. Run them as the hub user:
     same results as a list of `{status, id, name, tookMs, message}`.
 
 ```text
-$ sitescope check -config config.json -match tls
+$ sitescope check -config config.toml -match tls
 ok    tls.www.example.org.https.443.v4   61ms   certificate expires 2026-12-01 (61 days), issuer E7
 ok    tls.www.example.org.https.443.v6   58ms   certificate expires 2026-12-01 (61 days), issuer E7
 warn  tls.mx.example.org.smtp.25.v4      212ms  certificate expires 2026-10-15 (14 days), issuer E8

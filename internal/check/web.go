@@ -54,7 +54,11 @@ func (c *TLS) Defaults(*config.Config) { c.Days = c.Days.Or(Threshold{Warn: 20, 
 
 func (c *TLS) Validate() error { return nil }
 
-func (c *HTTP) Defaults(*config.Config) {}
+func (c *HTTP) Defaults(*config.Config) {
+	for i := range c.Targets {
+		c.Targets[i].Latency = c.Targets[i].Latency.Or(Threshold{Warn: 2, Crit: 5})
+	}
+}
 
 func (c *HTTP) Validate() error {
 	for _, t := range c.Targets {
@@ -181,7 +185,7 @@ func httpCheck(t HTTPTarget) func(context.Context, *Env) Result {
 	if want == 0 && t.Redirect == "" {
 		want = 200
 	}
-	lat := t.Latency.Or(Threshold{Warn: 2, Crit: 5})
+	lat := t.Latency
 	client := caClient(t.CA)
 	return func(ctx context.Context, env *Env) Result {
 		c, err := client(env)

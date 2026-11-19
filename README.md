@@ -16,11 +16,13 @@ SiteScope. One static Go binary:
   keeps 30+ days of history in `/var/lib/sitescope/history.db` (bbolt), emails
   state changes and a daily digest, pings a dead-man's-switch URL, and serves
   the status page on `127.0.0.1:8470` for a reverse proxy.
-- CLI: `unlock`, `lock`, `status`, `vault set|rm|list|set-password`, `check`,
-  `probes` (every destination the hub contacts, and how often), `version`.
+- CLI: `unlock`, `lock`, `status`, `vault set|rm|list|set-password`, `config`
+  (the effective config, or a check of one), `check`, `probes` (every
+  destination the hub contacts, and how often), `verify`, `version`.
 
-Nothing about the infrastructure is hardcoded: every target comes from the
-JSON config that the NixOS module renders from `services.sitescope.settings`.
+Nothing about the infrastructure is hardcoded: every target comes from one
+config file, TOML or JSON. On NixOS, the module renders it from
+`services.sitescope.settings`.
 
 ## Checks
 
@@ -29,7 +31,7 @@ JSON config that the NixOS module renders from `services.sitescope.settings`.
 | dns (`dns.`) | primary answers SOA for every zone; per zone × secondary × IPv4/IPv6: SOA with `aa`, serial equal to the primary's; TLD delegation lists the expected NS; names resolve to expected IPs on a public resolver | 5m (delegation 1h) |
 | dns (`host.*.knot`) | Knot zones loaded, not near expiry, none missing | with agent poll |
 | domains (`domain.`) | RDAP registration expiry; warn 45 days, crit 14 | 12h |
-| tls (`tls.`) | certificate days left over HTTPS or SMTP STARTTLS, per IP family, chain verified; warn 20, crit 7; optional ALPN (`alpn: "h2"`) | 6h |
+| tls (`tls.`) | certificate days left over HTTPS or SMTP STARTTLS, per IP family, chain verified; warn 20, crit 7; optional ALPN (`alpn = "h2"`) | 6h |
 | tls (`ct.`) | Certificate Transparency (Cert Spotter): valid certificates for each domain from an unexpected CA (crit) or for unexpected names (warn) | 24h, domains spread over the day |
 | http (`http.`) | status code and latency | 1m |
 | mail (`mail.`) | SMTP banner per address; daily open-relay probe expecting 554; DNS blocklists through the local unbound | 5m / 24h / 1h |
@@ -55,8 +57,9 @@ to the notified status sends nothing. The first sighting of a healthy check is
 silent. A check stuck in unknown for `unknownAfter` (default 1h) is reported
 once, unless its agent is down. A digest of everything not ok goes out once a day after
 `alerts.digestTime` (skipped on the day of a start after that time).
-Startup always sends "sitescope started on <host> - vault LOCKED, run
-sitescope unlock", and `hub.vault` warns if it is still locked 15 minutes later.
+When some check needs a vault secret, startup sends "sitescope started on
+<host> - vault LOCKED, run sitescope unlock", and `hub.vault` warns if it is
+still locked 15 minutes later.
 
 Every `hub.heartbeatInterval` (default 1m) with no store errors the hub GETs
 `SITESCOPE_HEARTBEAT_URL`, e.g. a dead-man's-switch check with a matching
@@ -123,97 +126,52 @@ Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`, `ct.toke
 
 ## Configuration
 
-The module fills in listen addresses, paths, command locations and the
-hostname. Everything else goes in `services.sitescope.settings`:
+One file, TOML or JSON, picked by its extension. Every key is optional:
 
-```nix
-let
-  inventory = import ./inventory.nix;
-  zones = map (f: lib.removeSuffix ".zone" f)
-    (lib.filter (lib.hasSuffix ".zone") (lib.attrNames (builtins.readDir ./zones)));
-  relays = lib.filterAttrs (_: h: h.role == "secondary") inventory;
-  nixHosts = lib.filterAttrs (_: h: h.ipv4 != null) inventory;
-  addrs = h: [ h.ipv4 h.ipv6 ];
-in
-{
-  alerts = { enabled = true; from = "sitescope@example.org"; to = [ "ops@example.org" ]; digestTime = "08:00"; };
-  hub.publicURL = "https://status.example.org";
-  public = [
-    { name = "DNS"; areas = [ "dns" ]; }
-    { name = "Mail"; areas = [ "mail" ]; }
-    { name = "Web"; areas = [ "http" "tls" ]; }
-  ];
-  host = lib.mapAttrsToList (name: h: {
-    inherit name;
-    url = "http://${h.wg}:9105";
-    postfix = h.role == "secondary";
-    knot = true;
-  }) nixHosts;
-  hosts.wgPeers = lib.mapAttrs' (n: h: lib.nameValuePair h.wgPublicKey n) inventory;
-  dns = {
-    inherit zones;
-    primary = "10.0.0.1";
-    servers = lib.mapAttrsToList (name: h: { inherit name; addrs = addrs h; }) relays;
-    delegation = lib.mapAttrsToList (_: h: h.publicName) relays;
-    resolve = lib.mapAttrs' (_: h: lib.nameValuePair h.publicName (addrs h)) relays;
-  };
-  domains.names = zones;
-  tls.targets = lib.concatMap (h: [ { name = h.publicName; } { name = h.publicName; starttls = "smtp"; } ])
-    (lib.attrValues relays) ++ [ { name = "www.example.org"; } { name = "status.example.org"; } ];
-  http.targets = [
-    { name = "www"; url = "https://www.example.org/healthz"; }
-    { name = "status"; url = "https://status.example.org/healthz"; }
-  ];
-  mail = {
-    banner.servers = lib.mapAttrsToList (name: h: { inherit name; addrs = addrs h; expect = h.publicName; }) relays;
-    openRelay.servers = lib.mapAttrsToList (name: h: { inherit name; addrs = [ h.ipv4 ]; }) relays;
-    blocklists = {
-      ips = lib.concatMap addrs (lib.attrValues relays);
-      lists = [
-        { zone = "zen.spamhaus.org"; ipv6 = true; crit = true; }
-        { zone = "bl.spamcop.net"; }
-        { zone = "b.barracudacentral.org"; }
-        { zone = "bl.mailspike.net"; }
-      ];
-    };
-  };
-  linode.instances = [ { name = "alpha"; id = 12345678; } { name = "bravo"; id = 23456789; } ];
-  cloudflare = {
-    zone = "example.org";
-    zoneId = "…";
-    expected = [ { type = "A"; name = "www.example.org"; content = "192.0.2.10"; } /* … */ ];
-  };
-}
+```toml
+[hub]
+publicURL = "https://status.example.org"
+
+[alerts]
+enabled = true
+from = "sitescope@example.org"
+to = ["ops@example.org"]
+digestTime = "08:00"
+
+[[host]]
+name = "alpha"
+url = "http://10.0.0.1:9105"
+knot = true
+
+[hosts]
+disk = { warn = 85, crit = 95 }   # thresholds shared by every host
+diskBusy = { warn = 95, crit = "off" }
+
+[dns]
+zones = ["example.org"]
+primary = "10.0.0.1"
+
+[[tls.targets]]
+name = "www.example.org"
+
+[[http.targets]]
+name = "www"
+url = "https://www.example.org/healthz"
 ```
 
-Reference (all optional; defaults shown):
+- On NixOS, the same keys go in `services.sitescope.settings`. The module
+  renders them to JSON, and the system build checks them.
+- An unknown or misspelled key fails at load, naming it:
+  `hosts.swapin: unknown key (did you mean swapIn?)`.
+- `sitescope config -config FILE` prints the effective config, every
+  default filled in. `sitescope config -defaults` prints every key.
+- Secrets come from the environment (`SITESCOPE_AGENT_TOKEN`,
+  `SITESCOPE_HEARTBEAT_URL`, …) and the vault, never from the config.
 
-| key | default | notes |
-|---|---|---|
-| `defaults` | `{interval: "5m", timeout: "10s", retries: 2, retryInterval: "1m"}` | every section and HTTP target takes the same four keys |
-| `hub` | `listen`, `stateDir`, `vault`, `controlSocket`, `controlGroup`, `hostname` (set by the module), `title: "Status"`, `publicURL`, `refresh: 60`, `docsURL` (nav link), `retentionDays: 35`, `sampleEvery: "15m"`, `heartbeatInterval: "1m"`, `lockedAfter: "15m"`, `tick: "1m"`, `concurrency: 8` | `hub.vault` warns once the vault has been locked `lockedAfter`; history keeps every status change plus one sample per `sampleEvery` |
-| `alerts` | `enabled: false`, `smtp: "127.0.0.1:25"`, `from`, `to`, `subjectPrefix: "[sitescope]"`, `renotifyInterval: "1h"`, `unknownAfter: "1h"` (`"off"` disables), `digestTime` (`"HH:MM"`, local time) | |
-| `public` | every check public, under its area | ordered rules `[{name, areas, checks, visibility, labels}]`, visibility `public`/`grouped`/`private`; areas: dns mail http tls domains hosts hygiene cloud hub |
-| `host` | `[{name, url, postfix, knot, wgIgnore}]` | one entry per host |
-| `hosts` | `wgPeers: {pubkey: name}`, thresholds `disk {80,90}` %, `memory {90,97}` %, `swap {60,90}` %, `load {2,4}` per CPU, `wgHandshake {600,3600}` s, `queueSize {20,200}`, `queueAge {3600,14400}` s, `knotExpiry {14d,3d}` s, `nixpkgsAge {30,90}` days, `knotZones` (default `dns.zones`); over `rateWindow: "5m"`: `cpu {85,95}` %, `memoryStall {10,30}` %, `swapIn {100,1000}` pages/s, `diskBusy {80,95}` %, `ioStall {25,50}` %, `netErrors {1,10}`/s, `netMbps` (off), `unitMemory {85,95}` % | thresholds are `{warn, crit}`; an unset bound keeps its default, `"off"` disables it |
-| `dns` | `zones`, `primary`, `servers: [{name, addrs}]`, `delegation`, `resolve: {name: [ips]}`, `publicResolver: "1.1.1.1"` | |
-| `domains` | `names`, `days {45,14}`, `bootstrap` (IANA), `servers: {tld: rdapBaseURL}` | .us and .co, missing from the IANA file, have built-in fallbacks |
-| `tls` | `targets: [{name, host, port, starttls: ""\|"smtp", families: ["4","6"], alpn}]`, `days {20,7}` | `alpn: "h2"` warns unless h2 is negotiated |
-| `ct` | `domains` (default `domains.names`), `issuers: ["Let's Encrypt"]`, `domainIssuers`, `names`, `ignore`, `recent: "7d"`, `tokenSecret: "certspotter_token"` | |
-| `http` | `targets: [{name, url, expectStatus: 200, latency {2,5} s}]` | redirects are not followed |
-| `mail.banner` | `servers: [{name, addrs, port: 25, expect}]`, `latency {3,10}` s | |
-| `mail.openRelay` | `servers`, `helo`, `from`, `to`, `expect: 554` | probe from a host outside the relay's `mynetworks` |
-| `mail.blocklists` | `resolver: "127.0.0.1:53"`, `ips`, `lists: [{zone, ipv6, crit}]` | `127.255.255.x` answers (refused) don't count as listed |
-| `linode` | `tokenSecret: "linode_token"`, `instances: [{name, id}]`, `uninvoiced {}` USD, `transfer {80,95}` %, `eventWindow: "24h"` | |
-| `cloudflare` | `tokenSecret: "cloudflare_token"`, `zone`, `zoneId`, `accountId`, `expected: [{type, name, content, priority}]`, `watch: [{type, name}]`, `tokens: [names]`, `tokenDays {30, 7}` | missing expected record: crit. Any other record with an expected name/type (or a watched one): warn. A watched token expiring inside `tokenDays`, disabled or missing: warn/crit |
-| `agent` | `listen`, `wgInterface: "wg0"`, `postfix`, `knot`, `knotSocket`, command paths | set by the module |
-
-Environment (`environmentFile`): `SITESCOPE_AGENT_TOKEN` (hub and agents, the
-same value), `SITESCOPE_HEARTBEAT_URL` (hub).
-
-An unknown or misspelled key fails at load, naming it: `hosts.swapin: unknown key (did you mean swapIn?)`.
-The NixOS module runs the same check when the system builds.
-`sitescope config -config FILE` prints the effective config with every default filled in.
+The [configuration reference](https://toppk.github.io/sitescope/configuration.html)
+lists every key, and
+[Using sitescope on NixOS](https://toppk.github.io/sitescope/nixos.html#using-sitescope-on-nixos)
+shows settings written in Nix, including generated from an inventory.
 
 Try a config without the daemon: `sitescope check -config FILE [-match dns.soa]`
 runs every non-credential check once and exits 2 if any is crit.

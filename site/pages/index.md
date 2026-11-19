@@ -111,8 +111,8 @@ module sets up both, with hardened systemd units.
 ## A first look
 
 ```sh
-sitescope check -config config.json            # every check once, no daemon
-sitescope check -config config.json -match dns.soa
+sitescope check -config config.toml            # every check once, no daemon
+sitescope check -config config.toml -match dns.soa
 sitescope unlock                               # on the hub host, after a restart
 sitescope status
 ```

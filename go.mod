@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	filippo.io/age v1.3.2 // indirect
 	filippo.io/hpke v0.4.0 // indirect
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect

@@ -60,7 +60,7 @@ the commit to pin. Tags are optional; nothing reads them.
 | path | what |
 |---|---|
 | `main.go` | subcommands |
-| `internal/config` | the JSON configuration: hub, agent, alerts, public, and the section registry |
+| `internal/config` | the configuration, TOML or JSON: hub, agent, alerts, public, the section registry, and the strict key check |
 | `internal/status` | statuses and thresholds |
 | `internal/check` | the check modules: each section's settings, defaults, checks and probes |
 | `internal/alert` | the per-check state machine: retries, notification due |

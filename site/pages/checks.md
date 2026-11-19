@@ -37,8 +37,8 @@ more.
 Section `tls`, every 6 hours. `tls.NAME.PROTO.PORT.FAM` connects over each
 IP family, verifies the chain against the system roots and the hostname,
 and reports days until the leaf expires: warn under 20, crit under 7.
-`starttls: "smtp"` checks a mail server's certificate after `STARTTLS` on
-port 25. With `alpn: "h2"` the handshake offers h2 and http/1.1, and the
+`starttls = "smtp"` checks a mail server's certificate after `STARTTLS` on
+port 25. With `alpn = "h2"` the handshake offers h2 and http/1.1, and the
 check warns unless the server chooses h2.
 
 ## Certificate Transparency
@@ -65,13 +65,12 @@ Spotter's `Retry-After` says.
 A key in the vault as `certspotter_token` raises the limit; it is used
 once the vault is unlocked, and the checks run without it until then.
 
-```nix
-ct = {
-  # Cloudflare's Universal SSL uses these CAs for proxied names
-  domainIssuers."example.org" = [ "SSL.com" "Google Trust Services" ];
-  # optional; "\\*" is a literal wildcard certificate name, "*" a glob
-  names = [ "www.example.org" "status.example.org" "example.org" "\\*.example.org" ];
-};
+```toml
+[ct]
+# Cloudflare's Universal SSL uses these CAs for proxied names
+domainIssuers."example.org" = ["SSL.com", "Google Trust Services"]
+# optional; "\\*" is a literal wildcard certificate name, "*" a glob
+names = ["www.example.org", "status.example.org", "example.org", "\\*.example.org"]
 ```
 
 ## HTTP
@@ -117,10 +116,18 @@ A device that sleeps, like a picture frame, sets `seenWithin`, e.g.
 window, and the message says when it was last seen. After a hub restart
 the window starts again from the restart.
 
-```json
-"ping": {"targets": [{"name": "printer.lan"}, {"name": "frame.lan", "seenWithin": "6h"}]},
-"tcp": {"targets": [{"name": "camera.lan", "port": 554}]},
-"ipp": {"targets": [{"name": "printer", "url": "ipp://printer.lan/ipp/print"}]}
+```toml
+[ping]
+targets = [
+  { name = "printer.lan" },
+  { name = "frame.lan", seenWithin = "6h" },
+]
+
+[tcp]
+targets = [{ name = "camera.lan", port = 554 }]
+
+[ipp]
+targets = [{ name = "printer", url = "ipp://printer.lan/ipp/print" }]
 ```
 
 ## Mail
@@ -158,7 +165,7 @@ unknown.
 | `host.HOST.load` | 5-minute load per CPU | `{2, 4}` |
 | `host.HOST.units` | failed systemd units: any is warn | |
 | `host.HOST.unit.NAME` | one per entry in the host's `units`: see below | crit, or the unit's `severity` |
-| `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers`; not on a host with `wireguard: false` | `{600, 3600}` s |
+| `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers`; not on a host with `wireguard = false` | `{600, 3600}` s |
 
 CPU, memory pressure, disk I/O and network are rates over `rateWindow`
 (5 minutes) from the agent's counters, so a brief spike doesn't alert but
@@ -180,21 +187,22 @@ percentage doesn't fit:
 - `free`: GiB available, warn and crit at or below. With only `free` set,
   the percentage used isn't rated. The message shows the free space.
 - `used`, `inodes`: percent, replacing `hosts.disk` for this mount.
-- `ignore: true`: leave the mount out.
+- `ignore = true`: leave the mount out.
 
-```json
-"disks": {
-  "/archive": {"used": {"warn": 97, "crit": 99}},
-  "/data": {"free": {"warn": 1000, "crit": 250}},
-  "/scratch": {"ignore": true}
-}
+```toml
+[[host]]
+name = "server"
+local = true
+disks."/archive" = { used = { warn = 97, crit = 99 } }
+disks."/data" = { free = { warn = 1000, crit = 250 } }
+disks."/scratch" = { ignore = true }
 ```
 
 ### Units and timers
 
 A host's `units` names systemd units that must be up, beyond "no failed
 units". Each entry is `{name, user, severity, maxAge}`. `name` includes
-the suffix. `user: true` asks the agent user's own systemd manager, for an
+the suffix. `user = true` asks the agent user's own systemd manager, for an
 agent that runs as a user unit. `severity` is `crit` (the default) or
 `warn`.
 
@@ -204,11 +212,14 @@ agent that runs as a user unit. `severity` is `crit` (the default) or
   hour late is overdue. With `maxAge`, the last run must also be that
   recent.
 
-```json
-"units": [
-  {"name": "sshd.service"},
-  {"name": "backup.timer", "user": true, "maxAge": "26h"},
-  {"name": "fwupd-refresh.timer", "severity": "warn"}
+```toml
+[[host]]
+name = "server"
+url = "http://10.0.0.1:9105"
+units = [
+  { name = "sshd.service" },
+  { name = "backup.timer", user = true, maxAge = "26h" },
+  { name = "fwupd-refresh.timer", severity = "warn" },
 ]
 ```
 
@@ -245,7 +256,7 @@ these instead:
 `hub.vault`, every tick: `locked` while the vault has been locked under
 `hub.lockedAfter` (15 minutes), then warn until someone runs
 `sitescope unlock`, so a restart nobody followed up on sends an email.
-`lockedAfter: "off"` removes the check.
+`lockedAfter = "off"` removes the check.
 
 ## Cloud
 

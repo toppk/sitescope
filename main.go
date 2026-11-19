@@ -77,7 +77,10 @@ var commands = []command{
 		}
 		return err
 	}},
-	{"config", groups[2], [][2]string{{"config -config FILE [-check]", "print the effective config with every default filled in; -check only validates it"}}, runConfig},
+	{"config", groups[2], [][2]string{
+		{"config -config FILE [-check] [-format json]", "print the effective config as TOML, every default filled in; -check only validates it"},
+		{"config -defaults", "print every key with its built-in default"},
+	}, runConfig},
 	{"check", groups[2], [][2]string{{"check -config FILE [-match SUBSTR] [-format json]", "run checks once and print results; exits 2 if any is crit"}}, runCheck},
 	{"probes", groups[2], [][2]string{{"probes -config FILE [-format json]", "list every destination the hub contacts, and how often"}}, runProbes},
 	{"verify", groups[2], [][2]string{{"verify -url URL [-version V] [-ca FILE] [-vault STATE] [-overall STATUS] [-services N] [-checks N]",
@@ -138,16 +141,39 @@ func main() {
 	}
 }
 
+const etcTOML, etcJSON = "/etc/sitescope/config.toml", "/etc/sitescope/config.json"
+
+// defaultConfig is $SITESCOPE_CONFIG, else whichever of /etc/sitescope/config.toml and config.json exists.
 func defaultConfig() string {
 	if p := os.Getenv("SITESCOPE_CONFIG"); p != "" {
 		return p
 	}
-	return "/etc/sitescope/config.json"
+	if _, err := os.Stat(etcTOML); err == nil {
+		return etcTOML
+	}
+	return etcJSON
+}
+
+// explicitConfig reports whether -config or $SITESCOPE_CONFIG named the file; otherwise both default files may not exist.
+func explicitConfig(fs *flag.FlagSet) (bool, error) {
+	explicit := os.Getenv("SITESCOPE_CONFIG") != ""
+	fs.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "config" })
+	if !explicit {
+		_, errT := os.Stat(etcTOML)
+		_, errJ := os.Stat(etcJSON)
+		if errT == nil && errJ == nil {
+			return false, fmt.Errorf("both %s and %s exist; remove one, or give -config FILE", etcTOML, etcJSON)
+		}
+	}
+	return explicit, nil
 }
 
 func loadConfig(fs *flag.FlagSet, args []string) (*config.Config, error) {
-	path := fs.String("config", defaultConfig(), "config file")
+	path := fs.String("config", defaultConfig(), "config file, .toml or .json")
 	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	if _, err := explicitConfig(fs); err != nil {
 		return nil, err
 	}
 	return config.Load(*path)
@@ -155,10 +181,15 @@ func loadConfig(fs *flag.FlagSet, args []string) (*config.Config, error) {
 
 // hubConfig reads the hub's config for the operator commands; without one they could act on the wrong hub.
 func hubConfig(fs *flag.FlagSet, path string) (*config.Config, error) {
-	explicit := os.Getenv("SITESCOPE_CONFIG") != ""
-	fs.Visit(func(f *flag.Flag) { explicit = explicit || f.Name == "config" })
+	explicit, err := explicitConfig(fs)
+	if err != nil {
+		return nil, err
+	}
 	cfg, err := config.Load(path)
 	if err != nil && !explicit && errors.Is(err, os.ErrNotExist) {
+		if path == etcJSON {
+			path = etcTOML + " or " + etcJSON
+		}
 		return nil, fmt.Errorf("no hub config: give -config FILE, set $SITESCOPE_CONFIG, or create %s", path)
 	}
 	return cfg, err
@@ -283,22 +314,49 @@ func runProbes(args []string) error {
 func runConfig(args []string) error {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
 	only := fs.Bool("check", false, "validate the config and build its checks; print nothing but a count")
-	cfg, err := loadConfig(fs, args)
-	if err != nil {
-		return err
-	}
+	ref := fs.Bool("defaults", false, "print every key with its built-in default, instead of reading a config")
+	format := fs.String("format", "toml", "output format: toml or json")
+	path := fs.String("config", defaultConfig(), "config file, .toml or .json")
+	fs.Parse(args)
 	if fs.NArg() > 0 {
 		return fmt.Errorf("config: unexpected argument %q", fs.Arg(0))
 	}
-	checks, err := check.Build(cfg)
+	if *format != "toml" && *format != "json" {
+		return fmt.Errorf("-format %q, want toml or json", *format)
+	}
+	cfg := config.Reference()
+	if !*ref {
+		if _, err := explicitConfig(fs); err != nil {
+			return err
+		}
+		var err error
+		if cfg, err = config.Load(*path); err != nil {
+			return err
+		}
+		checks, err := check.Build(cfg)
+		if err != nil {
+			return err
+		}
+		if *only {
+			fmt.Printf("config ok: %d checks\n", len(checks))
+			return nil
+		}
+	}
+	doc, err := json.Marshal(cfg)
+	if *ref {
+		doc, err = config.ReferenceJSON()
+	}
 	if err != nil {
 		return err
 	}
-	if *only {
-		fmt.Printf("config ok: %d checks\n", len(checks))
-		return nil
+	if *format == "json" {
+		var out bytes.Buffer
+		json.Indent(&out, doc, "", "  ")
+		out.WriteByte('\n')
+		_, err := out.WriteTo(os.Stdout)
+		return err
 	}
-	return writeJSON(cfg)
+	return config.WriteTOML(os.Stdout, doc)
 }
 
 func runVerify(args []string) error {

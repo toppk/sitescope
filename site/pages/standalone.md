@@ -22,10 +22,10 @@ running unit, e.g. one directory per release with a `current` symlink.
 
 ## The local host
 
-A host entry with `local: true` is collected by the hub itself, in-process,
+A `[[host]]` with `local = true` is collected by the hub itself, in-process,
 instead of polled over HTTP. It needs no agent, port or token. The checks
 are the same as for a polled host, with the same ids, so the host can move
-to a separate agent later by replacing `local: true` with a `url`.
+to a separate agent later by replacing `local = true` with a `url`.
 
 - The `agent` section's command paths apply. The host's own `postfix`,
   `knot` and `wireguard` switches decide what is collected.
@@ -33,39 +33,61 @@ to a separate agent later by replacing `local: true` with a `url`.
   scheduler. A hung command or mount makes that one section report an
   error, and the rest of the report still arrives.
 - Without CAP_NET_ADMIN there are no WireGuard stats, so set
-  `wireguard: false`.
-- System units are read from the system manager. `user: true` units are
+  `wireguard = false`.
+- System units are read from the system manager. `user = true` units are
   read from the hub user's own manager.
 
 ## Configuration
 
-```json
-{
-  "hub": {
-    "listen": "127.0.0.1:8470",
-    "stateDir": "/home/me/sitescope/state",
-    "controlSocket": "/run/user/1000/sitescope/control.sock",
-    "publicURL": "https://status.home.example",
-    "lockedAfter": "off"
-  },
-  "alerts": {"enabled": true, "from": "sitescope@home.example", "to": ["me@home.example"],
-             "smtp": "127.0.0.1:25", "ntfy": {"enabled": true}},
-  "host": [{
-    "name": "server", "local": true, "os": "fedora", "wireguard": false, "skip": ["swap"],
-    "disks": {"/data": {"free": {"warn": 500, "crit": 100}}},
-    "units": [{"name": "backup.timer", "user": true, "maxAge": "26h"},
-              {"name": "fwupd-refresh.timer", "severity": "warn"}]
-  }],
-  "ping": {"targets": [{"name": "printer.lan"}, {"name": "frame.lan", "seenWithin": "6h"}]},
-  "tcp": {"targets": [{"name": "camera.lan", "port": 554}]},
-  "ipp": {"targets": [{"name": "printer", "url": "ipp://printer.lan/ipp/print"}]}
-}
+`~/sitescope/etc/config.toml`:
+
+```toml
+[hub]
+listen = "127.0.0.1:8470"
+stateDir = "/home/me/sitescope/state"
+controlSocket = "/run/user/1000/sitescope/control.sock"
+publicURL = "https://status.home.example"
+lockedAfter = "off"
+
+[alerts]
+enabled = true
+from = "sitescope@home.example"
+to = ["me@home.example"]
+smtp = "127.0.0.1:25"
+ntfy = { enabled = true }
+
+[[host]]
+name = "server"
+local = true
+os = "fedora"
+wireguard = false
+skip = ["swap"]
+disks."/data" = { free = { warn = 500, crit = 100 } }
+units = [
+  { name = "backup.timer", user = true, maxAge = "26h" },
+  { name = "fwupd-refresh.timer", severity = "warn" },
+]
+
+[ping]
+targets = [
+  { name = "printer.lan" },
+  { name = "frame.lan", seenWithin = "6h" },
+]
+
+[tcp]
+targets = [{ name = "camera.lan", port = 554 }]
+
+[ipp]
+targets = [{ name = "printer", url = "ipp://printer.lan/ipp/print" }]
 ```
+
+Check it before starting the unit:
+`sitescope config -config ~/sitescope/etc/config.toml -check`.
 
 - `controlSocket` names a path under the user's runtime directory, which
   the unit's `RuntimeDirectory=sitescope` creates. Then `sitescope status`
   and `unlock` work for that user with no group setup. Pass the same
-  config with `-config`, or set `SITESCOPE_CONFIG`.
+  config with `-config`, or set `SITESCOPE_CONFIG=~/sitescope/etc/config.toml`.
 - **The vault.** Checks without a secret run while the vault is locked. If
   the hub has none, keep only the admin login in the vault
   (`sitescope vault set-password`). Set `lockedAfter` to `"off"`, so a
@@ -84,7 +106,7 @@ to a separate agent later by replacing `local: true` with a `url`.
 Description=sitescope hub
 
 [Service]
-ExecStart=%h/sitescope/current/sitescope hub -config %h/sitescope/etc/config.json
+ExecStart=%h/sitescope/current/sitescope hub -config %h/sitescope/etc/config.toml
 EnvironmentFile=%h/sitescope/etc/env
 RuntimeDirectory=sitescope
 Restart=on-failure

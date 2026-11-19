@@ -36,7 +36,7 @@ journalctl -u sitescope-agent -f
 | `/var/lib/sitescope/history.db` | bbolt: states and history. About 20 MB at 100 checks for 35 days |
 | `/var/lib/sitescope/vault.age` | the vault. Back it up |
 | `/run/sitescope/control.sock` | the control socket |
-| `/etc/sitescope/config.json` | the configuration, for the CLI |
+| `/etc/sitescope/config.json` | the configuration the NixOS module rendered, for the CLI; `config.toml` on a host you set up yourself |
 
 Deleting `history.db` while the hub is stopped is safe: it starts over,
 and every check's first sighting is silent again.

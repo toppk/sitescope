@@ -104,16 +104,19 @@ func (t *Threshold) UnmarshalJSON(b []byte) error {
 }
 
 func (t Threshold) MarshalJSON() ([]byte, error) {
-	out := map[string]any{}
-	for k, v := range map[string]float64{"warn": t.Warn, "crit": t.Crit} {
+	bound := func(v float64) any {
 		switch {
 		case math.IsNaN(v):
-			out[k] = "off"
+			return "off"
 		case v != 0:
-			out[k] = v
+			return v
 		}
+		return nil
 	}
-	return json.Marshal(out)
+	return json.Marshal(struct {
+		Warn any `json:"warn,omitempty"`
+		Crit any `json:"crit,omitempty"`
+	}{bound(t.Warn), bound(t.Crit)})
 }
 
 // Above rates v where larger is worse (usage, age, latency).

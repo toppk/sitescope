@@ -110,7 +110,7 @@ The topic URL works like a password, so it comes from
 `SITESCOPE_NTFY_TOKEN` for a server that needs an access token. Host the
 topic somewhere other than the hub's own network. A push carries only
 counts, like "2 crit, 1 recovered", plus a link to the detail page.
-`alerts.ntfy.details: true` adds the check names. A failed push is retried
+`alerts.ntfy.details = true` adds the check names. A failed push is retried
 twice, five seconds apart, before it waits for the next pass.
 
 ## Heartbeat

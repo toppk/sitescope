@@ -74,8 +74,44 @@ services are enabled on the host.
 
 ## Describe what you expect
 
-`settings` is where the hosts, zones, certificates and URLs go. A minimal
-start:
+`settings` is where the hosts, zones, certificates and URLs go. sitescope
+reads them as one config file; in TOML, a minimal start is:
+
+```toml
+[hub]
+publicURL = "https://status.example.org"
+
+[alerts]
+enabled = true
+from = "sitescope@example.org"
+to = ["ops@example.org"]
+digestTime = "08:00"
+
+[[host]]
+name = "a"
+url = "http://10.0.0.1:9105"
+knot = true
+
+[[host]]
+name = "b"
+url = "http://10.0.0.2:9105"
+postfix = true
+
+[dns]
+zones = ["example.org"]
+primary = "10.0.0.1"
+
+[[tls.targets]]
+name = "www.example.org"
+
+[[http.targets]]
+name = "www"
+url = "https://www.example.org/"
+```
+
+On NixOS you write the same keys in Nix, in `sitescope-settings.nix`, and
+the module renders them (see
+[Using sitescope on NixOS](nixos.html#using-sitescope-on-nixos)):
 
 ```nix
 {
@@ -97,8 +133,11 @@ start:
 ```sh
 nix build github:toppk/sitescope
 nix eval --json .#nixosConfigurations.hub.config.services.sitescope.settings > /tmp/sitescope.json
-./result/bin/sitescope check -config /tmp/sitescope.json
+./result/bin/sitescope config -check -config /tmp/sitescope.json   # keys and values
+./result/bin/sitescope check -config /tmp/sitescope.json          # every check, once
 ```
+
+`nixos-rebuild` runs the same `config -check` when it builds the system.
 
 ## Set up the vault
 

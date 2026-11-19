@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -43,7 +45,19 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 	if d < 0 {
 		return json.Marshal("off")
 	}
-	return json.Marshal(time.Duration(d).String())
+	return json.Marshal(d.String())
+}
+
+// String is time.Duration's form without zero units: "1h" rather than "1h0m0s".
+func (d Duration) String() string {
+	s := time.Duration(d).String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 // Timing overrides the scheduler defaults for a section or target.
@@ -299,12 +313,207 @@ func (p Public) Matches(id, area string) bool {
 	return false
 }
 
+// Load reads a .toml or .json config.
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return Parse(b)
+	switch filepath.Ext(path) {
+	case ".toml":
+		return ParseTOML(b)
+	case ".json":
+		return Parse(b)
+	}
+	return nil, fmt.Errorf("config: %s: want a .toml or .json file", path)
+}
+
+// CheckTOMLKeys checks a TOML document's syntax and keys only, without defaults or validation, as for a fragment.
+func CheckTOMLKeys(b []byte) error {
+	j, err := fromTOML(b)
+	if err != nil {
+		return err
+	}
+	return checkKeys(j)
+}
+
+func ParseTOML(b []byte) (*Config, error) {
+	j, err := fromTOML(b)
+	if err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	return Parse(j)
+}
+
+// Reference is every section with its built-in defaults, each list holding one example entry.
+func Reference() *Config {
+	c := &Config{}
+	examples(reflect.ValueOf(c).Elem())
+	for _, r := range registry {
+		s := r.new()
+		examples(reflect.ValueOf(s).Elem())
+		for _, l := range r.lists {
+			examples(reflect.ValueOf(s.(Lists).List(l)).Elem())
+		}
+		c.sections = append(c.sections, s)
+	}
+	c.Hub.Hostname = "host.example.org" // not this machine's name, which would otherwise be the default
+	c.applyDefaults()
+	return c
+}
+
+// examples gives each nil list one zero entry, or none for a list of scalars, and each nil map no entries.
+func examples(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() {
+				examples(v.Field(i))
+			}
+		}
+	case reflect.Slice:
+		if v.IsNil() {
+			n := 0
+			if v.Type().Elem().Kind() == reflect.Struct {
+				n = 1
+			}
+			v.Set(reflect.MakeSlice(v.Type(), n, n))
+		}
+		for i := range v.Len() {
+			examples(v.Index(i))
+		}
+	case reflect.Map:
+		if v.IsNil() {
+			v.Set(reflect.MakeMap(v.Type()))
+		}
+	case reflect.Pointer:
+		if v.IsNil() && v.Type().Elem().Kind() == reflect.Struct {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		if !v.IsNil() {
+			examples(v.Elem())
+		}
+	}
+}
+
+var (
+	timingType    = reflect.TypeFor[Timing]()
+	marshalerType = reflect.TypeFor[json.Marshaler]()
+)
+
+// ReferenceJSON is Reference as JSON with every key, omitempty or not; section and target timing is left to defaults.
+func ReferenceJSON() ([]byte, error) {
+	c := Reference()
+	var b bytes.Buffer
+	b.WriteByte('{')
+	n := 0
+	put := func(k string, v reflect.Value) error {
+		var e bytes.Buffer
+		if ok, err := refValue(&e, v); err != nil || !ok {
+			return err
+		}
+		if n++; n > 1 {
+			b.WriteByte(',')
+		}
+		kj, _ := json.Marshal(k)
+		b.Write(kj)
+		b.WriteByte(':')
+		b.Write(e.Bytes())
+		return nil
+	}
+	cv := reflect.ValueOf(*c)
+	for _, f := range coreFields() {
+		if err := put(f.name, cv.FieldByIndex(f.index)); err != nil {
+			return nil, err
+		}
+	}
+	for i, r := range registry {
+		s := c.sections[i]
+		if err := put(r.key, reflect.ValueOf(s)); err != nil {
+			return nil, err
+		}
+		for _, l := range r.lists {
+			if err := put(l, reflect.ValueOf(s.(Lists).List(l))); err != nil {
+				return nil, err
+			}
+		}
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
+}
+
+// refValue writes v as JSON with every field; it reports false for a nil pointer, which has no default to show.
+func refValue(w *bytes.Buffer, v reflect.Value) (bool, error) {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return false, nil
+		}
+		v = v.Elem()
+	}
+	t := v.Type()
+	if t.Implements(marshalerType) || reflect.PointerTo(t).Implements(marshalerType) && t.Kind() != reflect.Struct || t == reflect.TypeFor[json.RawMessage]() {
+		j, err := json.Marshal(v.Interface())
+		w.Write(j)
+		return true, err
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		w.WriteByte('{')
+		n := 0
+		for _, f := range fields(t) {
+			if len(f.index) > 1 && t.Field(f.index[0]).Type == timingType {
+				continue
+			}
+			var e bytes.Buffer
+			ok, err := refValue(&e, v.FieldByIndex(f.index))
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				continue
+			}
+			if n++; n > 1 {
+				w.WriteByte(',')
+			}
+			kj, _ := json.Marshal(f.name)
+			w.Write(kj)
+			w.WriteByte(':')
+			w.Write(e.Bytes())
+		}
+		w.WriteByte('}')
+	case reflect.Slice, reflect.Array:
+		w.WriteByte('[')
+		for i := range v.Len() {
+			if i > 0 {
+				w.WriteByte(',')
+			}
+			if _, err := refValue(w, v.Index(i)); err != nil {
+				return false, err
+			}
+		}
+		w.WriteByte(']')
+	case reflect.Map:
+		keys := v.MapKeys()
+		slices.SortFunc(keys, func(a, b reflect.Value) int { return strings.Compare(a.String(), b.String()) })
+		w.WriteByte('{')
+		for i, k := range keys {
+			if i > 0 {
+				w.WriteByte(',')
+			}
+			kj, _ := json.Marshal(k.String())
+			w.Write(kj)
+			w.WriteByte(':')
+			if _, err := refValue(w, v.MapIndex(k)); err != nil {
+				return false, err
+			}
+		}
+		w.WriteByte('}')
+	default:
+		j, err := json.Marshal(v.Interface())
+		w.Write(j)
+		return true, err
+	}
+	return true, nil
 }
 
 func Parse(b []byte) (*Config, error) {
@@ -379,6 +588,7 @@ func (c *Config) applyDefaults() {
 	al := &c.Alerts
 	def(&al.SMTP, "127.0.0.1:25")
 	def(&al.SubjectPrefix, "[sitescope]")
+	def(&al.Ntfy.Min, "crit")
 	if al.RenotifyInterval == 0 {
 		al.RenotifyInterval = Duration(time.Hour)
 	}

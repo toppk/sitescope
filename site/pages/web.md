@@ -68,24 +68,36 @@ rule it matches, by area or by check id glob (`*` matches any run of
 characters, `?` one). A check that matches no rule is **public**, listed
 under its area's light with its own name. So with no rules at all,
 everything is class A, and you hide things as you go. To make private the
-default instead, end the list with `{ visibility = "private"; checks = [ "*" ]; }`.
+default instead, end the list with a rule of `visibility = "private"` and
+`checks = ["*"]`.
 
-```nix
-public = [
-  # A: listed one by one, with labels that give nothing away
-  { name = "Website"; visibility = "public";
-    checks = [ "http.www" "http.shop" ];
-    labels = { "http.www" = "Main site"; "http.shop" = "Shop"; }; }
+```toml
+# A: listed one by one, with labels that give nothing away
+[[public]]
+name = "Website"
+visibility = "public"
+checks = ["http.www", "http.shop"]
+labels = { "http.www" = "Main site", "http.shop" = "Shop" }
 
-  # C: rules for private checks come before the broader rules they'd otherwise match
-  { visibility = "private"; checks = [ "dns.primary" "host.*.wireguard" ]; }
+# C: rules for private checks come before the broader rules they'd otherwise match
+[[public]]
+visibility = "private"
+checks = ["dns.primary", "host.*.wireguard"]
 
-  # B: whole areas behind one light each
-  { name = "DNS"; areas = [ "dns" ]; }
-  { name = "Mail"; areas = [ "mail" ]; }
-  { name = "Servers"; areas = [ "hosts" "hygiene" ]; }
-  # everything else stays public, under its area's name
-];
+# B: whole areas behind one light each
+[[public]]
+name = "DNS"
+areas = ["dns"]
+
+[[public]]
+name = "Mail"
+areas = ["mail"]
+
+[[public]]
+name = "Servers"
+areas = ["hosts", "hygiene"]
+
+# everything else stays public, under its area's name
 ```
 
 ::: warning

@@ -57,6 +57,9 @@ type Blocklist struct {
 }
 
 func (m *Mail) Defaults(c *config.Config) {
+	if b := m.Banner; b != nil {
+		b.Latency = b.Latency.Or(Threshold{Warn: 3, Crit: 10})
+	}
 	if r := m.OpenRelay; r != nil {
 		if r.Expect == 0 {
 			r.Expect = 554
@@ -79,7 +82,7 @@ func (m *Mail) build(b *builder) {
 				b.add(bn.Timing, &Check{ID: fmt.Sprintf("mail.banner.%s.%s", s.Name, family(a)),
 					Name: fmt.Sprintf("SMTP banner %s (%s)", s.Name, family(a)), Area: "mail", Group: s.Name,
 					Probes: []Probe{{a, fmt.Sprintf("%d/tcp", smtpPort(s.Port)), "connect, read banner, QUIT", 1}},
-					Run:    bannerCheck(a, s, bn.Latency.Or(Threshold{Warn: 3, Crit: 10}))})
+					Run:    bannerCheck(a, s, bn.Latency)})
 			}
 		}
 	}
