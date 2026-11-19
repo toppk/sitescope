@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"slices"
@@ -64,7 +65,8 @@ func (d *DNS) build(b *builder) {
 				Run: delegationCheck(z, d.Delegation, d.PublicResolver)})
 		}
 	}
-	for name, want := range d.Resolve {
+	for _, name := range slices.Sorted(maps.Keys(d.Resolve)) {
+		want := d.Resolve[name]
 		name = fqdn(name)
 		b.add(t, &Check{ID: "dns.resolve." + name, Name: "Public resolution of " + name, Area: "dns", Group: "Resolution",
 			Probes: []Probe{{d.PublicResolver, "53/udp", "recursive A and AAAA lookups", 2}},
