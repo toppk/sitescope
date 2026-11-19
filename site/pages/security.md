@@ -29,6 +29,9 @@ only, probes only ask, and the open-relay probe stops at `RCPT TO`.
 - **Plaintext secrets never touch the disk.** The vault is decrypted into
   locked memory; edits are encrypted before they are written.
 - **Secrets are never logged** and never appear in error messages.
+- **Agents take no orders.** An agent answers `GET` requests for its
+  report and metrics, and accepts nothing but a list of unit names to look
+  up. The hub pulls; agents never connect out.
 - **No unlock from the web.** Only a member of the admin group, on the
   hub host, through a mode 0660 socket.
 - **Secrets from outside the store.** The environment file is not in
@@ -55,7 +58,9 @@ only, probes only ask, and the open-relay probe stops at `RCPT TO`.
 - **The detail view** uses basic auth against a bcrypt (cost 12) hash
   stored in the vault, so a locked hub can't authenticate anyone. Failures
   are limited to one per second.
-- **The control socket** checks the caller with `SO_PEERCRED` and logs it.
+- **The control socket** is open only to its owner and admin group (mode
+  0660). The hub logs each caller's uid, read with `SO_PEERCRED` on Linux
+  and OpenBSD and `LOCAL_PEERCRED` on FreeBSD.
 
 ## Known limits
 

@@ -2,11 +2,13 @@
 
 # sitescope
 
-A small, fast health monitor for a handful of NixOS hosts, named after HP
-SiteScope. One static Go binary:
+A small, fast health monitor for a handful of hosts, named after HP
+SiteScope, with its credentials sealed in an age vault. One static Go binary,
+with a NixOS module, or release builds for Linux, FreeBSD and OpenBSD:
 
-- `sitescope agent` runs on every host and serves `GET /v1/report` (JSON,
-  bearer token) on its wg0 address: disk, memory, swap, load, uptime, failed
+- `sitescope agent` runs on every Linux host and serves `GET /v1/report` (JSON,
+  bearer token) on its wg0 address. It takes no commands and never connects
+  out; the hub pulls. It reports disk, memory, swap, load, uptime, failed
   units, booted vs current generation, nixpkgs date, WireGuard handshakes,
   postfix queue, Knot zone status, and counters for CPU, pressure (PSI),
   vmstat, disk and network I/O and per-service cgroup memory. The same data

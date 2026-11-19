@@ -1,9 +1,50 @@
 ---
 title: Concepts
 eyebrow: Start
-lede: Checks, statuses, retries, notifications and history. How sitescope decides that something changed, and when to tell you.
-description: How sitescope's checks, statuses, retries, notifications and history work.
+lede: The hub and its agents, then checks, statuses, retries, notifications and history. How sitescope decides that something changed, and when to tell you.
+description: How sitescope's hub and agents work together, and how its checks, statuses, retries, notifications and history work.
 ---
+
+## Hub and agent
+
+sitescope has two roles in one binary. The **hub** runs on one host: it
+schedules every check, probes from the outside, keeps history, holds the
+vault, sends alerts and serves the page. An **agent** runs on each Linux
+host and reports what that host knows about itself. The split is built
+around one rule: the agent is something the hub reads, never something
+that acts.
+
+- **Pull, never push.** The hub asks each agent for its report every
+  tick. An agent opens no connections and sends nothing on its own, so a
+  host can't be made to report somewhere else, and the hub decides when
+  the load happens.
+- **One read-only question.** An agent has three endpoints, all `GET`:
+  `/v1/report` (JSON), `/metrics` (Prometheus) and `/healthz`. It takes no
+  commands and changes nothing on its host. The only input it accepts is
+  the list of systemd units the hub wants looked up; names are validated,
+  and they're only read.
+- **Least privilege.** The agent runs as its own user. On NixOS its one
+  capability is `CAP_NET_ADMIN`, because `wg show` needs it, and the hub,
+  which holds the vault, is a different user with none. It listens only on
+  the host's WireGuard address, behind a bearer token, or over TLS with a
+  token of its own per host where the network isn't private. See
+  [Security model](security.html).
+- **One poll, many checks.** A single report feeds every `host.NAME.*`
+  check: disk, memory, units, timers, the postfix queue and the rest. Those
+  checks don't retry on their own; the poll does. While an agent is
+  unreachable, its host checks go `unknown` and stay quiet, and
+  `host.NAME.agent` is the one that alerts.
+- **Bounded collection.** Each of the agent's collectors runs with its own
+  8-second limit, so a hung mount or command loses only its own section,
+  and the rest of the report still arrives.
+- **The same report, in-process.** A host with `local = true` is the
+  hub's own, collected by the hub itself with the same collectors and the
+  same check ids. Moving it to a separate agent later is a `url` away. See
+  [Without NixOS](standalone.html).
+- **Compatible across versions.** A newer hub reads an older agent's
+  report, and an older agent's missing facts show as `unknown`, not as
+  failures. Both directions are tested against recorded reports. See
+  [Agent report](agent-report.html).
 
 ## Checks
 
@@ -55,7 +96,7 @@ between steps the hub sleeps.
 
 Thresholds are written `{ warn, crit }`. Whether "above" or "below" is bad
 depends on the check: disk use is bad above, days to expiry is bad below.
-A bound of `0` turns it off.
+A bound left out keeps its default, and `"off"` turns it off.
 
 ## Retries
 

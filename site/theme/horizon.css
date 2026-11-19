@@ -1001,6 +1001,11 @@ td code {
   margin: 1.5rem 0 2rem;
 }
 
+/* four cards make a 2x2 grid rather than three and an orphan */
+.cards:has(> .card:nth-child(4):last-child) {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+
 .card {
   position: relative;
   padding: 1.2rem 1.2rem 0.6rem;
