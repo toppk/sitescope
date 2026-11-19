@@ -17,13 +17,12 @@ import (
 
 type DNS struct {
 	config.Timing
-	Zones           []string            `json:"zones"`
-	Primary         string              `json:"primary"`
-	Servers         []NameServer        `json:"servers"`
-	Delegation      []string            `json:"delegation"`
-	DelegationZones []string            `json:"delegationZones"`
-	PublicResolver  string              `json:"publicResolver"`
-	Resolve         map[string][]string `json:"resolve"`
+	Zones          []string            `json:"zones"`
+	Primary        string              `json:"primary"`
+	Servers        []NameServer        `json:"servers"`
+	Delegation     []string            `json:"delegation"`
+	PublicResolver string              `json:"publicResolver"`
+	Resolve        map[string][]string `json:"resolve"`
 }
 
 type NameServer struct {
