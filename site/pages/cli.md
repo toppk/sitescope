@@ -64,15 +64,15 @@ error. Run them as the hub user:
 
 ## The config
 
-`sitescope config -config FILE [-check] [-format json]`
+`sitescope config -config FILE [-check] [-format json|nix]`
 :   Prints the effective config as TOML, with every default filled in, or
-    as JSON with `-format json`. With `-check` it only validates the
+    as JSON (`-format json`) or NixOS settings (`-format nix`). With `-check` it only validates the
     config and builds its checks, and prints the count. An unknown key
     fails with its path, as in
     `hosts.swapin: unknown key (did you mean swapIn?)`. See
     [Checking a config](configuration.html#checking-a-config).
 
-`sitescope config -defaults [-format json]`
+`sitescope config -defaults [-format json|nix]`
 :   Prints every key with its built-in default, without reading a config.
 
 ## One-shot checks

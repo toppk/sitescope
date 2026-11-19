@@ -126,7 +126,9 @@ Names are configurable (`linode.tokenSecret`, `cloudflare.tokenSecret`, `ct.toke
 
 ## Configuration
 
-One file, TOML or JSON, picked by its extension. Every key is optional:
+One file, picked by its extension: TOML, written by people, or JSON, for
+generated configs. On NixOS the same keys go in `services.sitescope.settings`,
+written in Nix. Every key is optional:
 
 ```toml
 [hub]
@@ -159,8 +161,8 @@ name = "www"
 url = "https://www.example.org/healthz"
 ```
 
-- On NixOS, the same keys go in `services.sitescope.settings`. The module
-  renders them to JSON, and the system build checks them.
+- On NixOS, the module renders `settings` to JSON, and the system build
+  checks it. `sitescope config -format nix` prints a config as settings.
 - An unknown or misspelled key fails at load, naming it:
   `hosts.swapin: unknown key (did you mean swapIn?)`.
 - `sitescope config -config FILE` prints the effective config, every
@@ -169,9 +171,9 @@ url = "https://www.example.org/healthz"
   `SITESCOPE_HEARTBEAT_URL`, …) and the vault, never from the config.
 
 The [configuration reference](https://toppk.github.io/sitescope/configuration.html)
-lists every key, and
+lists every key, and every example on the site comes in TOML, JSON and Nix.
 [Using sitescope on NixOS](https://toppk.github.io/sitescope/nixos.html#using-sitescope-on-nixos)
-shows settings written in Nix, including generated from an inventory.
+shows settings generated from an inventory.
 
 Try a config without the daemon: `sitescope check -config FILE [-match dns.soa]`
 runs every non-credential check once and exits 2 if any is crit.

@@ -7,6 +7,8 @@ on:
     branches: [master, main]
     paths:
       - "site/**"
+      - "internal/config/**"
+      - "go.mod"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -27,6 +29,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
+      # build.sh compiles the converter that writes each TOML example as JSON and Nix
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
 
       - name: Install pandoc
         run: |

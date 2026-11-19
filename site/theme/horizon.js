@@ -46,6 +46,54 @@
     pre.appendChild(button);
   });
 
+  // Config examples come as TOML, JSON and Nix: one choice, remembered, switches every example.
+  var groups = document.querySelectorAll(".config-tabs");
+  if (groups.length) {
+    var buttons = [];
+    var show = function (format) {
+      groups.forEach(function (g) {
+        var tabs = g.querySelectorAll(":scope > .config-tab");
+        var pick = tabs[0].dataset.format;
+        tabs.forEach(function (t) {
+          if (t.dataset.format === format) pick = format;
+        });
+        tabs.forEach(function (t) {
+          t.hidden = t.dataset.format !== pick;
+        });
+        g.querySelectorAll(".config-tablist button").forEach(function (b) {
+          b.setAttribute("aria-selected", b.dataset.format === pick ? "true" : "false");
+        });
+      });
+    };
+    groups.forEach(function (g) {
+      var list = document.createElement("div");
+      list.className = "config-tablist";
+      list.setAttribute("role", "tablist");
+      g.querySelectorAll(":scope > .config-tab").forEach(function (t) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("role", "tab");
+        b.dataset.format = t.dataset.format;
+        b.textContent = t.dataset.label;
+        b.addEventListener("click", function () {
+          try {
+            localStorage.setItem("sitescope-config-format", b.dataset.format);
+          } catch (e) {}
+          show(b.dataset.format);
+        });
+        list.appendChild(b);
+        buttons.push(b);
+      });
+      g.insertBefore(list, g.firstChild);
+      g.classList.add("tabbed");
+    });
+    var saved = null;
+    try {
+      saved = localStorage.getItem("sitescope-config-format");
+    } catch (e) {}
+    show(saved || "toml");
+  }
+
   document.querySelectorAll(".page h2[id], .page h3[id]").forEach(function (h) {
     var a = document.createElement("a");
     a.className = "anchor";

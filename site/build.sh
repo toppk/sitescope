@@ -52,6 +52,12 @@ nav_for() {
   echo "$html</ul></div>"
 }
 
+# horizon.lua writes each TOML config example as JSON and Nix too, with this converter
+tools=$(mktemp -d)
+trap 'rm -rf "$tools"' EXIT
+(cd "$repo_root" && go build -o "$tools/configtabs" ./site/configtabs)
+export CONFIGTABS="$tools/configtabs"
+
 rm -rf "$out"
 mkdir -p "$out/theme" "$out/assets"
 cp "$theme/horizon.css" "$theme/horizon.js" "$out/theme/"

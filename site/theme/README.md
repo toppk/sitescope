@@ -11,8 +11,8 @@ generator.
 |---|---|
 | `horizon.css` | the whole look, driven by custom properties; light and dark ("night shift") |
 | `template.html` | a pandoc HTML5 template: masthead, optional hero, sidebar, page, "on this page", pager |
-| `horizon.js` | optional niceties: light/dark toggle, code language labels and copy buttons, heading anchors, contents highlighting |
-| `horizon.lua` | a pandoc filter: scrolling tables, and boxes in `::: tier` rows |
+| `horizon.js` | optional niceties: light/dark toggle, code language labels and copy buttons, heading anchors, contents highlighting, config-format tabs |
+| `horizon.lua` | a pandoc filter: scrolling tables, boxes in `::: tier` rows, and, when `$CONFIGTABS` names a converter, JSON and Nix tabs beside each TOML example |
 
 ## Using it in a project
 

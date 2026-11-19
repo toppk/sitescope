@@ -75,7 +75,7 @@ services are enabled on the host.
 ## Describe what you expect
 
 `settings` is where the hosts, zones, certificates and URLs go. sitescope
-reads them as one config file; in TOML, a minimal start is:
+reads them as one config file. A minimal start:
 
 ```toml
 [hub]
@@ -109,23 +109,10 @@ name = "www"
 url = "https://www.example.org/"
 ```
 
-On NixOS you write the same keys in Nix, in `sitescope-settings.nix`, and
-the module renders them (see
-[Using sitescope on NixOS](nixos.html#using-sitescope-on-nixos)):
-
-```nix
-{
-  alerts = { enabled = true; from = "sitescope@example.org"; to = [ "ops@example.org" ]; digestTime = "08:00"; };
-  hub.publicURL = "https://status.example.org";
-  host = [
-    { name = "a"; url = "http://10.0.0.1:9105"; knot = true; }
-    { name = "b"; url = "http://10.0.0.2:9105"; postfix = true; }
-  ];
-  dns = { zones = [ "example.org" ]; primary = "10.0.0.1"; };
-  tls.targets = [ { name = "www.example.org"; } ];
-  http.targets = [ { name = "www"; url = "https://www.example.org/"; } ];
-}
-```
+The tabs show the same config as JSON and as Nix. On NixOS, the Nix
+version's attribute set is what `sitescope-settings.nix` returns, and the
+module renders it (see
+[Using sitescope on NixOS](nixos.html#using-sitescope-on-nixos)).
 
 [Configuration](configuration.html) lists every key, and
 [Checks](checks.html) what each section checks. Before deploying, try it:

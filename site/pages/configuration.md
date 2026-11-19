@@ -1,15 +1,16 @@
 ---
 title: Configuration
 eyebrow: Use
-lede: One file, TOML or JSON. Every key is optional, and nothing about your hosts is built in.
+lede: One file, TOML or JSON, or NixOS settings in Nix. Every key is optional, and nothing about your hosts is built in.
 description: Every sitescope configuration key with its default, how a config is checked, and the environment variables it reads.
 ---
 
 ## The file
 
 sitescope reads one config file, `.toml` or `.json`, picked by its
-extension. Both have the same keys, defaults and checks. You write TOML;
-JSON is there for generated configs.
+extension. Both have the same keys, defaults and checks, and so do NixOS
+`settings`, written in Nix. Each example on this site comes in all three:
+pick a tab, and every example switches to it.
 
 - On NixOS, the module renders `services.sitescope.settings` to JSON. See
   [Using sitescope on NixOS](nixos.html#using-sitescope-on-nixos).
@@ -87,7 +88,8 @@ its line.
   checks, and prints only the check count. It needs no secrets and opens
   no files the config names.
 - `sitescope config -config FILE` prints the effective config as TOML,
-  with every default filled in. `-format json` prints it as JSON.
+  with every default filled in. `-format json` prints it as JSON, and
+  `-format nix` as NixOS settings.
 - `sitescope config -defaults` prints every key with its built-in
   default: the reference below, without the comments.
 - The NixOS module runs `-check` on the rendered settings when the system
@@ -107,12 +109,13 @@ within one, can override it with the same four keys:
 
 ## Every key
 
-Every section, with its defaults. A list shows one entry, with every key
-that entry takes. An empty string, list or table means none, or that the
+Every section, with its defaults, in TOML; `sitescope config -defaults
+-format json` or `-format nix` prints it in the other two. A list shows one
+entry, with every key that entry takes. An empty string, list or table means none, or that the
 comment gives the default. [Checks](checks.html) says what each section
 checks.
 
-<!-- TestConfigReference checks this block against "sitescope config -defaults", comments aside. -->
+<!-- toml only: TestConfigReference checks this block against "sitescope config -defaults", comments aside. -->
 ```toml
 [hub]
 # The NixOS module sets listen, stateDir, vault, controlSocket, controlGroup and hostname.

@@ -41,6 +41,7 @@ to a separate agent later by replacing `local = true` with a `url`.
 
 `~/sitescope/etc/config.toml`:
 
+<!-- formats: toml json -->
 ```toml
 [hub]
 listen = "127.0.0.1:8470"
