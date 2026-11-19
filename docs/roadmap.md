@@ -47,6 +47,14 @@ No behaviour change; groundwork for what follows.
   hardening; release tarballs for both on x86-64. The agent stays Linux
   only.
 
+## 1.7.1: the agent on FreeBSD and OpenBSD
+
+- The agent and local hosts on both: disk, memory, swap, load, CPU,
+  network, WireGuard, named rc services, package age; FreeBSD's reboot
+  check and OpenBSD's failed rc services. Checks that differ are named
+  for their system.
+- Ping through the system's setuid `/sbin/ping` without root.
+
 ## 1.8.0: logs and metrics
 
 - Kernel and journal watching: counted rules, with ignore, info-level and

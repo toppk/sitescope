@@ -17,6 +17,10 @@ Prometheus text format. `GET /healthz` answers 200 without a token.
 
 ## Fields
 
+The format is the same on every system. A field the system can't supply
+stays empty or absent; the table says where a field comes from where that
+differs.
+
 | field | type | |
 |---|---|---|
 | `host` | string | hostname |
@@ -24,28 +28,30 @@ Prometheus text format. `GET /healthz` answers 200 without a token.
 | `uptimeSec` | number | |
 | `load` | [3]number | 1, 5 and 15 minute load |
 | `cpus` | int | |
-| `memory` | object | `totalKB`, `availableKB`, `freeKB`, `buffersKB`, `cachedKB`, `shmemKB`, `dirtyKB`, `swapTotalKB`, `swapFreeKB` |
+| `memory` | object | `totalKB`, `availableKB`, `freeKB`, `buffersKB`, `cachedKB`, `shmemKB`, `dirtyKB`, `swapTotalKB`, `swapFreeKB`. On the BSDs: `availableKB` is free plus inactive pages, `cachedKB` the inactive pages, and the buffer, shared and dirty fields are 0 |
 | `disks` | array | `device`, `mount`, `fsType`, `totalBytes`, `availBytes`, `usedPct`, `inodesPct`, `files`, `filesFree`; real filesystems only, one per device |
-| `failedUnits` | []string | from `systemctl list-units --state=failed` |
-| `os` | object | `id`, `versionId`, `name` from `/etc/os-release` |
+| `failedUnits` | []string | Linux: from `systemctl list-units --state=failed`. OpenBSD: enabled rc daemons that aren't running. Absent on FreeBSD |
+| `os` | object | `id`, `versionId`, `name` from `/etc/os-release`, or from `uname` where there's none (OpenBSD) |
 | `system` | object | `booted`, `current` (store paths), `rebootNeeded`, `nixosVersion`, `nixpkgsDate` (`YYYYMMDD`); NixOS only, empty elsewhere |
-| `kernel` | object | `running`, and `newest` installed in `/usr/lib/modules`; not on NixOS |
-| `packages` | object | `manager` (`rpm`, `dpkg`, `apk` or `pacman`) and `changed`, the package database's modification time in Unix seconds; not on NixOS |
+| `kernel` | object | `running`, and `newest` installed: in `/usr/lib/modules` on Linux, `freebsd-version -r` and `-k` on FreeBSD; not on NixOS or OpenBSD |
+| `packages` | object | `manager` (`rpm`, `dpkg`, `apk`, `pacman`, `pkg` or `pkg_add`) and `changed`, the package database's modification time in Unix seconds; not on NixOS |
 | `wireguard` | array | `publicKey`, `latestHandshake` (Unix seconds, 0 = never), `rxBytes`, `txBytes`; skipped with `agent.wireguard: false` |
 | `postfix` | object | `messages`, `queues` (per queue name), `oldestAgeSec`; only when enabled |
 | `knot` | array | `name`, `role`, `serial`, `expiresInSec` (-1 when not a secondary); only when enabled |
-| `counters` | object | cumulative since boot: `bootTime`, `cpu` (per CPU, seconds per mode), `pressure` (`cpu`, `memory`, `io`: `someTotalUs`, `fullTotalUs`, `someAvg60`, `fullAvg60`), `vmstat` (`oomKill`, `pswpin`, `pswpout`, `pgmajfault`), `disks` (whole devices: `reads`, `writes`, `readBytes`, `writtenBytes`, `ioTimeMs`), `net` (all but `lo` and `veth*`: bytes, errors and drops each way) |
-| `units` | array | each system service's cgroup memory: `unit`, `bytes`, `maxBytes` (only with a MemoryMax) |
+| `counters` | object | cumulative since boot: `bootTime`, `cpu` (per CPU, seconds per mode), `pressure` (`cpu`, `memory`, `io`: `someTotalUs`, `fullTotalUs`, `someAvg60`, `fullAvg60`), `vmstat` (`oomKill`, `pswpin`, `pswpout`, `pgmajfault`), `disks` (whole devices: `reads`, `writes`, `readBytes`, `writtenBytes`, `ioTimeMs`), `net` (all but `lo` and `veth*`: bytes, errors and drops each way). On the BSDs: `bootTime`, `cpu` (from `kern.cp_times` on FreeBSD; one total from `kern.cp_time` on OpenBSD) and `net` (no drops on OpenBSD); `pressure`, `vmstat` and `disks` are Linux only |
+| `units` | array | each system service's cgroup memory: `unit`, `bytes`, `maxBytes` (only with a MemoryMax); Linux only |
 | `services` | array | only when asked for, see below: `unit`, `user`, `load`, `active`, `sub`, `result`; a timer adds `service`, `running`, `exitStatus`, `lastRun` and `nextRun` (Unix seconds, 0 = none) |
 | `errors` | object | section name → error, for each section that couldn't be collected |
 
 A failure in one section leaves the rest of the report intact.
 
 The hub asks about specific units with
-`/v1/report?unit=sshd.service&userUnit=backup.timer`, up to 64 names. The
-agent answers from `systemctl show` (with `--user` for `userUnit`) and
-puts them in `services`, in the order asked. A name that isn't a unit name
-is a 400.
+`/v1/report?unit=sshd.service&userUnit=backup.timer`, up to 64 names. On
+Linux the agent answers from `systemctl show` (with `--user` for
+`userUnit`). On FreeBSD and OpenBSD the names are rc services, such as
+`unit=sshd`, answered by `service NAME status` or `rcctl check NAME`, and
+`userUnit` isn't accepted. Either way they go in `services`, in the order
+asked, and a name that isn't valid on the agent's system is a 400.
 
 ## Metrics
 

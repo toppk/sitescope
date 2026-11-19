@@ -208,12 +208,13 @@ name = ""
 url = ""  # the agent's report URL; not with local
 postfix = false  # check the postfix queue
 knot = false  # check Knot zones
-os = ""  # os-release ID; default "nixos". Others drop the NixOS checks
+os = ""  # "nixos" (default), another Linux os-release ID, "freebsd" or "openbsd": picks the host's checks
 ca = ""  # PEM file that verifies an https agent URL
 tokenEnv = ""  # variable with this agent's token; default SITESCOPE_AGENT_TOKEN
 wgIgnore = []  # WireGuard peers whose handshake age doesn't matter
 # wireguard = false drops the handshake check (default on).
 # A unit: severity "crit" (default) or "warn"; maxAge bounds a timer's last run.
+# On FreeBSD and OpenBSD a unit is an rc service, e.g. { name = "sshd" }; user and maxAge are Linux only.
 units = [
   { name = "", user = false, severity = "", maxAge = "0s" },
 ]

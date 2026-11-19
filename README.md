@@ -6,7 +6,7 @@ A small, fast health monitor for a handful of hosts, named after HP
 SiteScope, with its credentials sealed in an age vault. One static Go binary,
 with a NixOS module, or release builds for Linux, FreeBSD and OpenBSD:
 
-- `sitescope agent` runs on every Linux host and serves `GET /v1/report` (JSON,
+- `sitescope agent` runs on every host (Linux, FreeBSD or OpenBSD) and serves `GET /v1/report` (JSON,
   bearer token) on its wg0 address. It takes no commands and never connects
   out; the hub pulls. It reports disk, memory, swap, load, uptime, failed
   units, booted vs current generation, nixpkgs date, WireGuard handshakes,
@@ -185,8 +185,8 @@ runs every non-credential check once and exits 2 if any is crit.
 
 Starting with 1.6.0, [releases](https://github.com/toppk/sitescope/releases)
 include static binaries, with `SHA256SUMS`: Linux on x86-64 and arm64, and,
-from 1.7.0, FreeBSD and OpenBSD on x86-64 (the hub and CLI; the agent runs on
-Linux only). Earlier releases are tags only:
+from 1.7.0, FreeBSD and OpenBSD on x86-64 (the agent from 1.7.1). Earlier
+releases are tags only:
 
 ```sh
 v=1.6.0

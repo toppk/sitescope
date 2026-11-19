@@ -67,13 +67,16 @@ the first with binaries.
 
 ## Platforms
 
-Linux is the main platform. The hub and CLI also build for FreeBSD and
-OpenBSD: code that differs per system lives in `*_linux.go`, `*_freebsd.go`
-and `*_openbsd.go` files (the vault's memory hardening, the terminal and
-peer-credential calls), and the agent's Linux-only parts have a
-`sys_other.go` stub. CI vets both BSD builds on every push. Before a
-release, run `go test ./...` natively on FreeBSD and OpenBSD as well; the
-ping test needs root there to exercise the raw-socket path.
+Linux is the main platform; FreeBSD and OpenBSD run everything too. Code
+that differs per system lives in `*_linux.go`, `*_freebsd.go`,
+`*_openbsd.go` and `*_bsd.go` files: the vault's memory hardening, the
+terminal and peer-credential calls, and the agent's collectors. The
+parsers for BSD command output (`swapinfo`, `netstat`, `service`,
+`rcctl`, `ping`) are untagged, so their tests run everywhere. CI vets
+both BSD builds on every push. Before a release, run `go test ./...`
+natively on FreeBSD and OpenBSD as well (`TestCollectBSD` runs the real
+collectors there); the ping test needs root to exercise the raw-socket
+path, and takes the `/sbin/ping` path without it.
 
 ## Layout
 

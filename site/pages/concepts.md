@@ -9,7 +9,7 @@ description: How sitescope's hub and agents work together, and how its checks, s
 
 sitescope has two roles in one binary. The **hub** runs on one host: it
 schedules every check, probes from the outside, keeps history, holds the
-vault, sends alerts and serves the page. An **agent** runs on each Linux
+vault, sends alerts and serves the page. An **agent** runs on each Linux, FreeBSD or OpenBSD
 host and reports what that host knows about itself. The split is built
 around one rule: the agent is something the hub reads, never something
 that acts.

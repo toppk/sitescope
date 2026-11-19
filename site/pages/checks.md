@@ -152,22 +152,33 @@ depends on the agent check and doesn't retry by itself. A section the
 agent couldn't collect is warn; a report older than three intervals is
 unknown.
 
-| id | checks | default |
-|---|---|---|
-| `host.HOST.disk` | used space and inodes, worst real filesystem | `{80, 90}` % |
-| `host.HOST.memory` | memory in use: total minus `MemAvailable`, so reclaimable page cache doesn't count. The message shows the cache and the three largest services | `{90, 97}` % |
-| `host.HOST.pressure` | what a memory shortage costs: share of time tasks stalled waiting for memory (PSI), swap-in pages/s, and OOM kills (any is crit) | stall `{10, 30}` %, swap-in `{100, 1000}`/s |
-| `host.HOST.cpu` | CPU busy (not idle or iowait), with iowait, steal and CPU pressure in the message | `{85, 95}` % |
-| `host.HOST.diskio` | each disk's busy time, read and write throughput, and the share of time tasks stalled on I/O | busy `{80, 95}` %, stall `{25, 50}` % |
-| `host.HOST.network` | per interface throughput; errors and drops per second | errors `{1, 10}`/s, `netMbps` off |
-| `host.HOST.cgroups` | each service with a MemoryMax: memory in use as a share of it | `{85, 95}` % |
-| `host.HOST.swap` | swap in use | `{60, 90}` % |
-| `host.HOST.load` | 5-minute load per CPU | `{2, 4}` |
-| `host.HOST.units` | failed systemd units: any is warn | |
-| `host.HOST.unit.NAME` | one per entry in the host's `units`: see below | crit, or the unit's `severity` |
-| `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers`; not on a host with `wireguard = false` | `{600, 3600}` s |
+The agent runs on Linux, FreeBSD and OpenBSD. A host's `os` says which:
+`nixos` (the default) or another Linux os-release ID such as `fedora`,
+or `freebsd` or `openbsd`. It decides which checks the host gets and what
+they're called. A check that means the same everywhere keeps its name; the
+**systems** column says where each runs.
 
-CPU, memory pressure, disk I/O and network are rates over `rateWindow`
+| id | checks | systems | default |
+|---|---|---|---|
+| `host.HOST.disk` | used space and inodes, worst real filesystem | all | `{80, 90}` % |
+| `host.HOST.memory` | memory in use, reclaimable cache not counted: total minus `MemAvailable` on Linux, minus free and inactive pages on the BSDs. The message shows the cache, and on Linux the three largest services | all | `{90, 97}` % |
+| `host.HOST.swap` | swap in use | all | `{60, 90}` % |
+| `host.HOST.load` | 5-minute load per CPU | all | `{2, 4}` |
+| `host.HOST.cpu` | CPU busy (not idle or iowait); iowait, steal and CPU pressure in the message on Linux | all | `{85, 95}` % |
+| `host.HOST.network` | per interface throughput; errors per second, and drops on Linux and FreeBSD | all | errors `{1, 10}`/s, `netMbps` off |
+| `host.HOST.wireguard` | age of each peer's latest handshake, named through `wgPeers`, from `wg show`; not on a host with `wireguard = false` | all | `{600, 3600}` s |
+| `host.HOST.unit.NAME` | one per entry in the host's `units`: see below | all | crit, or the unit's `severity` |
+| `host.HOST.units` | **failed systemd units** (Linux): any is warn | Linux | |
+| `host.HOST.units` | **failed rc services** (OpenBSD): enabled daemons that aren't running, as `rcctl ls failed` lists them; any is warn | OpenBSD | |
+| `host.HOST.pressure` | what a memory shortage costs: share of time tasks stalled waiting for memory (PSI), swap-in pages/s, and OOM kills (any is crit) | Linux | stall `{10, 30}` %, swap-in `{100, 1000}`/s |
+| `host.HOST.diskio` | each disk's busy time, read and write throughput, and the share of time tasks stalled on I/O | Linux | busy `{80, 95}` %, stall `{25, 50}` % |
+| `host.HOST.cgroups` | each service with a MemoryMax: memory in use as a share of it | Linux | `{85, 95}` % |
+
+FreeBSD's rc keeps no failed state for services, so a FreeBSD host has no
+`host.HOST.units`; name the services that must run in its `units`
+instead.
+
+CPU, network, and on Linux memory pressure and disk I/O, are rates over `rateWindow`
 (5 minutes) from the agent's counters, so a brief spike doesn't alert but
 a sustained one does. For the first two minutes after the hub or the host
 starts they report "collecting a baseline".
@@ -200,11 +211,13 @@ disks."/scratch" = { ignore = true }
 
 ### Units and timers
 
-A host's `units` names systemd units that must be up, beyond "no failed
-units". Each entry is `{name, user, severity, maxAge}`. `name` includes
-the suffix. `user = true` asks the agent user's own systemd manager, for an
-agent that runs as a user unit. `severity` is `crit` (the default) or
+A host's `units` names services that must be up. Each entry is
+`{name, user, severity, maxAge}`; `severity` is `crit` (the default) or
 `warn`.
+
+On **Linux** they are systemd units, named with their suffix, beyond "no
+failed units". `user = true` asks the agent user's own systemd manager,
+for an agent that runs as a user unit.
 
 - A service, socket, mount or other unit must be loaded and `active`.
 - A timer must be loaded, `active` and scheduled. The service it starts
@@ -221,6 +234,22 @@ units = [
   { name = "backup.timer", user = true, maxAge = "26h" },
   { name = "fwupd-refresh.timer", severity = "warn" },
 ]
+```
+
+On **FreeBSD and OpenBSD** they are rc services, named as rc names them,
+without a suffix. Each must be running: `service NAME status` on FreeBSD,
+`rcctl check NAME` on OpenBSD. Timers, `user` and `maxAge` are Linux only,
+and the config check refuses them on a BSD host. On FreeBSD a few
+services, such as `cron` and `syslogd`, keep a pid file only root can read;
+for those the agent looks for a running process of that exact name, and
+the message says so.
+
+```toml
+[[host]]
+name = "bsd"
+url = "http://10.0.0.2:9105"
+os = "freebsd"
+units = [{ name = "sshd" }, { name = "cron" }, { name = "nginx", severity = "warn" }]
 ```
 
 The hub sends the list with each poll, so units are configured only in
@@ -241,15 +270,18 @@ From the agent's report, area `hygiene`.
 - `host.HOST.nixpkgs`: age of the nixpkgs revision in `nixos-version`:
   warn at 30 days, crit at 90.
 
-Both are for NixOS hosts only. A host with another `os` in its entry gets
-these instead:
+Both are for NixOS hosts only. Other hosts get these instead:
 
 - `host.HOST.reboot`: warn when a newer kernel is installed than the one
-  running. Installed kernels are the directories in `/usr/lib/modules`
-  that hold a `vmlinuz`, compared the way rpm compares versions.
+  running. On Linux, installed kernels are the directories in
+  `/usr/lib/modules` that hold a `vmlinuz`, compared the way rpm compares
+  versions. On FreeBSD, `freebsd-version -k` (installed) against `-r`
+  (running). Not on OpenBSD: it relinks `/bsd` at every boot and keeps it
+  root-only, so the agent can't tell an updated kernel from a relinked one.
 - `host.HOST.updates`: days since the package database last changed, which
-  is the last install, update or removal (rpm, dpkg, apk or pacman):
-  `updatesAge`, warn at 30 days, crit at 90.
+  is the last install, update or removal (rpm, dpkg, apk or pacman on
+  Linux, `pkg` on FreeBSD, `pkg_add` on OpenBSD): `updatesAge`, warn at 30
+  days, crit at 90.
 
 ## Monitoring
 

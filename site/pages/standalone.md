@@ -144,21 +144,32 @@ loopback.
 
 ## On FreeBSD and OpenBSD
 
-From 1.7.0 the hub and the CLI run on FreeBSD and OpenBSD (x86-64): the
-vault, the control socket, the status page and every check that works over
-the network. Tested on FreeBSD 15.1 and OpenBSD 8.0.
+The hub, the CLI and, from 1.7.1, the agent run on FreeBSD and OpenBSD:
+the vault, the control socket, the status page, every network check, and
+the host checks. Tested on FreeBSD 15.1 and OpenBSD 8.0, with the agent
+and hub as an ordinary user.
 
-- **No agent, and no local host.** The agent's collectors read Linux's
-  `/proc`, `/sys` and systemd, so `sitescope agent` refuses to start, and a
-  hub with a `local = true` host refuses to start. Watch Linux hosts through
-  their agents (`url`), as usual.
-- **Ping needs root.** Neither system has Linux's unprivileged ping socket,
-  so ICMP needs a raw socket. Run as an ordinary user, a ping check fails
-  and says so. TCP, HTTP and IPP device checks need no privilege.
+- **Host checks.** Give the host `os = "freebsd"` or `os = "openbsd"`.
+  The checks that mean the same on every system keep their names: disk,
+  memory, swap, load, CPU, network, WireGuard, named services, package
+  age, and the reboot check on FreeBSD. Pressure, disk I/O and service
+  memory are Linux only; OpenBSD adds "failed rc services". See
+  [Hosts](checks.html#hosts) for each check's systems.
+- **A local host** works too, with the hub's own system as its `os`; the
+  hub refuses to start if they don't match.
+- **Services, not units.** A host's `units` names rc services, such as
+  `sshd`, without a suffix. See [Units and timers](checks.html#units-and-timers).
+- **Ping.** Neither system has Linux's unprivileged ping socket, so the
+  hub uses a raw socket when it runs as root, and otherwise the system's
+  setuid `/sbin/ping`, one echo a second. A ping check then takes about
+  `count` seconds: 3 by default, well inside its 10-second timeout.
+- **The agent's address.** The BSDs have no `IP_FREEBIND`, so start the
+  agent after `wg0` has its address.
 - **Locked memory.** The vault's buffers are `mlock`ed, like
   `LimitMEMLOCK=1M` on Linux. FreeBSD's default login class allows 64 KiB:
   raise `memorylocked` to `1M` in `/etc/login.conf` and run `cap_mkdb`.
   OpenBSD's default is ample.
 - **The service.** There's no systemd unit, so run
-  `sitescope hub -config /path/config.toml` under the system's own service
-  manager: an `rc.d` script, or `daemon(8)` on FreeBSD.
+  `sitescope hub -config /path/config.toml` (or `agent`) under the
+  system's own service manager: an `rc.d` script, or `daemon(8)` on
+  FreeBSD.

@@ -27,7 +27,7 @@ needs to know when any of it goes wrong.
 
 ### The agent
 
-Runs on every Linux host and answers one question, when the hub asks:
+Runs on every host (Linux, FreeBSD or OpenBSD) and answers one question, when the hub asks:
 what does this host look like? Disk, memory, swap, load, failed units and
 the units and timers you name, a pending reboot, package age, WireGuard
 handshakes, the postfix queue, Knot zones, and CPU, pressure, disk and
